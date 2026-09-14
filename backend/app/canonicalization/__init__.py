@@ -1,0 +1,1 @@
+"""Make canonicalization a package."""
