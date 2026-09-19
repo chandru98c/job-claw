@@ -44,13 +44,15 @@ class MockSession:
     async def refresh(self, obj):
         pass
         
-    async def execute(self, stmt):
+    async def execute(self, stmt, *args, **kwargs):
         class Result:
             def scalars(self):
                 class Scalars:
                     def all(self):
                         return []
                 return Scalars()
+            def scalar_one_or_none(self):
+                return None
         return Result()
 
 @pytest.fixture(autouse=True)

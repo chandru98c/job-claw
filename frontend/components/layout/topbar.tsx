@@ -4,12 +4,14 @@ import React, { useState } from "react";
 import { Search, ChevronDown, Layers, Server, Monitor } from "lucide-react";
 import { useAppState } from "@/components/providers";
 import { ProfileDialog } from "@/components/profile-dialog";
+import { ProfileSwitcher } from "@/components/profile-switcher";
 import { useRouter } from "next/navigation";
 
 export function Topbar() {
   const { isOpenSearch, toggleSearchMode, apiMode, toggleApiMode } = useAppState();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && searchQuery.trim()) {
@@ -79,7 +81,8 @@ export function Topbar() {
           <div className="h-4 w-px bg-white/10 mx-1 hidden sm:block"></div>
 
           {/* Profile Switcher */}
-          <ProfileDialog />
+          <ProfileSwitcher onEditActiveProfile={() => setProfileDialogOpen(true)} />
+          <ProfileDialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen} />
         </div>
       </div>
     </header>

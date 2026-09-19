@@ -2,16 +2,12 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database.database import get_db
-from app.database.models import Task, TaskStatus, UserProfile
+from app.database.models import Task, TaskStatus
 from pydantic import BaseModel
 from typing import Optional
 
 router = APIRouter(prefix="/system", tags=["system"])
 
-class ProfileUpdate(BaseModel):
-    name: str
-    keywords: Optional[list[str]] = None
-    locations: Optional[list[str]] = None
 
 class WorkerModeUpdate(BaseModel):
     mode: str
@@ -51,43 +47,3 @@ async def get_system_status(request: Request, db: AsyncSession = Depends(get_db)
         "mode": mode
     }
 
-@router.get("/profile")
-async def get_profile(db: AsyncSession = Depends(get_db)):
-    """Get the single global user profile."""
-    result = await db.execute(select(UserProfile).limit(1))
-    profile = result.scalar_one_or_none()
-    
-    if profile:
-        return {
-            "name": profile.name,
-            "keywords": profile.keywords or [],
-            "locations": profile.locations or []
-        }
-    return {"name": "User", "keywords": [], "locations": []}
-
-@router.post("/profile")
-async def update_profile(data: ProfileUpdate, db: AsyncSession = Depends(get_db)):
-    """Update the single global user profile."""
-    result = await db.execute(select(UserProfile).limit(1))
-    profile = result.scalar_one_or_none()
-    
-    if not profile:
-        profile = UserProfile(
-            name=data.name,
-            keywords=data.keywords or [],
-            locations=data.locations or []
-        )
-        db.add(profile)
-    else:
-        profile.name = data.name
-        if data.keywords is not None:
-            profile.keywords = data.keywords
-        if data.locations is not None:
-            profile.locations = data.locations
-        
-    await db.commit()
-    return {
-        "name": profile.name,
-        "keywords": profile.keywords,
-        "locations": profile.locations
-    }

@@ -91,27 +91,35 @@ async def test_real_backend_e2e(client, async_db_session: AsyncSession):
     
     await async_db_session.commit()
     
+    # Ensure worker mode is not 'server' from previous test leaks
+    if hasattr(app.state, "redis"):
+        await app.state.redis.set("worker:mode", "local")
+    
     # 1. Create a Saved Search
     resp = await client.post("/saved-searches", json={
         "name": "Python Jobs",
         "query": "Python",
         "is_active": True
-    })
+    }, headers={"X-Profile-ID": profile_id})
     assert resp.status_code == 201
     
     search_id = resp.json()["id"]
     
     # 2. Trigger saved search
-    resp = await client.post(f"/saved-searches/{search_id}/run")
+    resp = await client.post(f"/saved-searches/{search_id}/run", headers={"X-Profile-ID": profile_id})
     assert resp.status_code == 202
+    await async_db_session.commit()
     
     # 3. Run Worker for saved search (which runs discovery, canonicalization, matching, recommendation)
-    worker = Worker(
-        functions=WorkerSettings.functions,
-        redis_settings=WorkerSettings.redis_settings,
-        burst=True
-    )
-    await worker.main()
+    # Because ARQ burst=True exits when the queue is empty, and this workflow chains tasks 
+    # (execute_saved_search -> discovery -> canonicalization), we must burst multiple times.
+    for _ in range(4):
+        worker = Worker(
+            functions=WorkerSettings.functions,
+            redis_settings=WorkerSettings.redis_settings,
+            burst=True
+        )
+        await worker.main()
     
     # 4. Verify Job is discovered and Canonicalized
     res = await async_db_session.execute(select(Job).where(Job.company_name == "testco"))
@@ -132,9 +140,10 @@ async def test_real_backend_e2e(client, async_db_session: AsyncSession):
     assert rec.job_id == job_id
         
     # 6. User clicks "Apply"
-    resp = await client.post("/applications", json={"job_id": job_id, "profile_id": profile_id})
+    resp = await client.post("/applications", json={"job_id": job_id}, headers={"X-Profile-ID": profile_id})
     assert resp.status_code == 201
     app_id = resp.json()["id"]
+    await async_db_session.commit()
     
     # Run worker for application prep
     worker = Worker(
@@ -151,17 +160,17 @@ async def test_real_backend_e2e(client, async_db_session: AsyncSession):
     # The browser inspect mock creates a field with id 'f1'.
     update_resp = await client.put(f"/applications/{app_id}/fields", json=[
         {"field_id": "f1", "value": "my_resume.pdf"}
-    ])
+    ], headers={"X-Profile-ID": profile_id})
     assert update_resp.status_code == 200
     assert len(update_resp.json()["unanswered"]) == 0
     
     # 7. Explicit Approval API
-    resp = await client.post(f"/applications/{app_id}/approve", json={})
+    resp = await client.post(f"/applications/{app_id}/approve", json={}, headers={"X-Profile-ID": profile_id})
     assert resp.status_code == 200
     assert resp.json()["status"] == "APPROVED"
     
     # 8. Trigger Submission
-    resp = await client.post(f"/applications/{app_id}/submit")
+    resp = await client.post(f"/applications/{app_id}/submit", headers={"X-Profile-ID": profile_id})
     assert resp.status_code == 200
     
     # Run worker to submit

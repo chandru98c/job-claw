@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database.database import get_db
 from app.database.models import Profile
 from app.schemas.search import SearchQuery, SearchResponse, JobMatchResult
 from app.services.search import SearchService
+from app.core.security import get_valid_profile
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -50,14 +51,12 @@ async def get_jobs(
 
 @router.get("/match", response_model=SearchResponse)
 async def match_jobs(
+    profile: Profile = Depends(get_valid_profile),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
 ):
     # Fetch active user profile
-    prof_res = await db.execute(select(Profile).limit(1))
-    profile = prof_res.scalar_one_or_none()
-    
     if not profile:
         return SearchResponse(items=[], total=0, page=page, limit=limit)
         

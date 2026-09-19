@@ -173,7 +173,15 @@ export default function Home() {
               timeAgo={job.timeAgo}
               type={job.job_type || "Full-time"}
               hideMatchScore={isOpenSearch}
-              onApply={() => console.log(`Applying to ${job.id}`)}
+              externalUrl={job.canonical_apply_url}
+              onPrepareApplication={async () => {
+                try {
+                  await api.post("/applications", { job_id: job.id });
+                  alert("Application preparation started. View it in the Applications tab.");
+                } catch (e: any) {
+                  alert(e.message || "Failed to prepare application");
+                }
+              }}
             />
           ))
         )}

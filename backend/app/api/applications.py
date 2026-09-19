@@ -10,26 +10,19 @@ import time
 from app.database.database import get_db
 from app.database.models import Application, ApplicationStatus, Job, Profile, Task, TaskEvent, TaskEventType, TaskStatus
 from app.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdateField, ApplicationApproval
-from app.core.security import UrlValidator, SSRFViolationError
+from app.core.security import UrlValidator, SSRFViolationError, get_valid_profile
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
 @router.post("", response_model=ApplicationResponse, status_code=201)
-async def create_application(request: Request, data: ApplicationCreate, profile_id: str = "default_profile_id", db: AsyncSession = Depends(get_db)):
+async def create_application(request: Request, data: ApplicationCreate, profile: Profile = Depends(get_valid_profile), db: AsyncSession = Depends(get_db)):
     """Creates a new application in PREPARING state and enqueues worker."""
     # 1. Validate Job
     job = await db.get(Job, data.job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
-    # 2. Validate Profile (using dummy auth for now)
-    profile = await db.get(Profile, profile_id)
-    if not profile:
-        # Create dummy profile if it doesn't exist for test purposes
-        profile = Profile(id=profile_id, name="Test User", email="test@example.com")
-        db.add(profile)
-        await db.commit()
-        
+    profile_id = profile.id
     # 3. Check Duplicate
     stmt = select(Application).where(Application.job_id == data.job_id, Application.profile_id == profile_id)
     existing = (await db.execute(stmt)).scalar_one_or_none()
@@ -78,23 +71,23 @@ async def create_application(request: Request, data: ApplicationCreate, profile_
     return new_app
 
 @router.get("/{application_id}", response_model=ApplicationResponse)
-async def get_application(application_id: str, profile_id: str = "default_profile_id", db: AsyncSession = Depends(get_db)):
+async def get_application(application_id: str, profile: Profile = Depends(get_valid_profile), db: AsyncSession = Depends(get_db)):
     app_record = await db.get(Application, application_id)
     if not app_record:
         raise HTTPException(status_code=404, detail="Application not found")
         
-    if app_record.profile_id != profile_id:
+    if app_record.profile_id != profile.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this application")
         
     return app_record
 
 @router.post("/{application_id}/approve")
-async def approve_application(application_id: str, data: ApplicationApproval, profile_id: str = "default_profile_id", db: AsyncSession = Depends(get_db)):
+async def approve_application(application_id: str, data: ApplicationApproval, profile: Profile = Depends(get_valid_profile), db: AsyncSession = Depends(get_db)):
     app_record = await db.get(Application, application_id)
     if not app_record:
         raise HTTPException(status_code=404, detail="Application not found")
         
-    if app_record.profile_id != profile_id:
+    if app_record.profile_id != profile.id:
         raise HTTPException(status_code=403, detail="Not authorized")
         
     if app_record.status != ApplicationStatus.READY_FOR_REVIEW:
@@ -108,12 +101,12 @@ async def approve_application(application_id: str, data: ApplicationApproval, pr
     return {"status": app_record.status.value}
 
 @router.post("/{application_id}/submit")
-async def submit_application(request: Request, application_id: str, profile_id: str = "default_profile_id", db: AsyncSession = Depends(get_db)):
+async def submit_application(request: Request, application_id: str, profile: Profile = Depends(get_valid_profile), db: AsyncSession = Depends(get_db)):
     app_record = await db.get(Application, application_id)
     if not app_record:
         raise HTTPException(status_code=404, detail="Application not found")
         
-    if app_record.profile_id != profile_id:
+    if app_record.profile_id != profile.id:
         raise HTTPException(status_code=403, detail="Not authorized")
         
     if app_record.status != ApplicationStatus.APPROVED:
@@ -139,12 +132,12 @@ async def submit_application(request: Request, application_id: str, profile_id: 
     return {"status": app_record.status.value, "task_id": task_id}
 
 @router.put("/{application_id}/fields")
-async def update_fields(application_id: str, updates: List[ApplicationUpdateField], profile_id: str = "default_profile_id", db: AsyncSession = Depends(get_db)):
+async def update_fields(application_id: str, updates: List[ApplicationUpdateField], profile: Profile = Depends(get_valid_profile), db: AsyncSession = Depends(get_db)):
     app_record = await db.get(Application, application_id)
     if not app_record:
         raise HTTPException(status_code=404, detail="Application not found")
         
-    if app_record.profile_id != profile_id:
+    if app_record.profile_id != profile.id:
         raise HTTPException(status_code=403, detail="Not authorized")
         
     if app_record.status not in (ApplicationStatus.READY_FOR_REVIEW, ApplicationStatus.APPROVED):

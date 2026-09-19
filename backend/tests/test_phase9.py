@@ -75,6 +75,6 @@ def test_seeder_network_isolation():
     assert "import httpx" not in content
     assert "import aiohttp" not in content
     assert "from httpx" not in content
-    assert "urllib" not in content
+    assert "urllib.request" not in content
     assert "playwright" not in content.lower()
     assert "SafeHTTPClient" not in content

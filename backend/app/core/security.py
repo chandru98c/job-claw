@@ -103,7 +103,19 @@ class UrlValidator:
         safe_ip = resolved_ips[0]
         return url, safe_ip
 
-def get_current_profile_id(request) -> str:
-    # Hardcoded dummy profile ID mapping to existing Phase 11 semantics
-    return "default_profile_id"
+from fastapi import Request, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database.database import get_db
+from app.database.models import Profile
+
+async def get_valid_profile(request: Request, db: AsyncSession = Depends(get_db)) -> Profile:
+    profile_id = request.headers.get("x-profile-id")
+    if not profile_id:
+        raise HTTPException(status_code=400, detail="Missing X-Profile-ID header")
+    
+    profile = await db.get(Profile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found or invalid X-Profile-ID")
+        
+    return profile
 

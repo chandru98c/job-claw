@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { api } from "@/lib/api";
 
 type AppStateContextType = {
   isOpenSearch: boolean;
@@ -29,10 +30,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         try {
           const baseUrl = "http://127.0.0.1:8000";
           
-          const profileRes = await fetch(`${baseUrl}/system/profile`);
-          if (profileRes.ok) {
-            const data = await profileRes.json();
+          try {
+            const data: any = await api.get("/profiles/me");
             setProfileNameState(data.name);
+          } catch (e) {
+            console.warn("Failed to load profile", e);
           }
 
           const modeRes = await fetch(`${baseUrl}/system/worker-mode`);
@@ -81,12 +83,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const setProfileName = async (name: string) => {
     setProfileNameState(name);
     try {
-      const baseUrl = "http://127.0.0.1:8000";
-      await fetch(`${baseUrl}/system/profile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
+      await api.put("/profiles/me", { name });
     } catch (e) {
       console.warn("Failed to update profile", e);
     }

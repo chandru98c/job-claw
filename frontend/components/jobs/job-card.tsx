@@ -11,10 +11,11 @@ interface JobCardProps {
   type?: string;
   hideMatchScore?: boolean;
   matchReasons?: string[] | null;
-  onApply?: () => void;
+  onPrepareApplication?: () => void;
+  externalUrl?: string;
 }
 
-export function JobCard({ title, company, location, source, matchScore, timeAgo, type = "Full-time", hideMatchScore = false, matchReasons = null, onApply }: JobCardProps) {
+export function JobCard({ title, company, location, source, matchScore, timeAgo, type = "Full-time", hideMatchScore = false, matchReasons = null, onPrepareApplication, externalUrl }: JobCardProps) {
   // Determine color based on match score
   const safeScore = matchScore || 0;
   const scoreColor = safeScore >= 90 ? "text-green-400" : safeScore >= 75 ? "text-yellow-400" : "text-zinc-400";
@@ -90,17 +91,26 @@ export function JobCard({ title, company, location, source, matchScore, timeAgo,
           )}
           
           <div className={`flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ${hideMatchScore ? 'mt-0' : 'mt-4'}`}>
-            {onApply && (
+            {onPrepareApplication && (
               <button 
-                onClick={onApply}
-                className="px-4 py-1.5 bg-white text-black text-xs font-semibold rounded-md hover:bg-zinc-200 transition-colors"
+                onClick={onPrepareApplication}
+                className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.3)] hover:shadow-[0_0_20px_rgba(34,197,94,0.5)] text-xs font-semibold rounded-md transition-all"
+                title="Prepare Application Internally"
               >
-                Apply
+                Prepare App
               </button>
             )}
-            <button className="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors">
-              <ExternalLink className="w-5 h-5" />
-            </button>
+            {externalUrl && (
+              <a 
+                href={externalUrl} 
+                target="_blank" 
+                rel="noreferrer"
+                className="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                title="Open External URL"
+              >
+                <ExternalLink className="w-5 h-5" />
+              </a>
+            )}
           </div>
         </div>
       </div>

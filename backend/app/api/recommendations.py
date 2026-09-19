@@ -6,20 +6,19 @@ from typing import List
 from datetime import datetime, timezone
 
 from app.database.database import get_db
-from app.database.models import JobRecommendation, RecommendationState, Application, ApplicationStatus, Job, Task, TaskStatus, TaskEvent, TaskEventType
+from app.database.models import JobRecommendation, RecommendationState, Application, ApplicationStatus, Job, Task, TaskStatus, TaskEvent, TaskEventType, Profile
 from app.schemas.recommendation import JobRecommendationResponse, RecommendationAction
-from app.core.security import get_current_profile_id
+from app.core.security import get_valid_profile
 
 router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 
 @router.get("", response_model=List[JobRecommendationResponse])
 async def get_recommendations(
-    request: Request,
+    profile: Profile = Depends(get_valid_profile),
     state: RecommendationState = None,
     db: AsyncSession = Depends(get_db)
 ):
-    profile_id = get_current_profile_id(request)
-    query = select(JobRecommendation).where(JobRecommendation.profile_id == profile_id)
+    query = select(JobRecommendation).where(JobRecommendation.profile_id == profile.id)
     if state:
         query = query.where(JobRecommendation.state == state)
         
@@ -27,7 +26,7 @@ async def get_recommendations(
     if not state or state == RecommendationState.NEW:
         await db.execute(
             update(JobRecommendation)
-            .where(JobRecommendation.profile_id == profile_id, JobRecommendation.state == RecommendationState.NEW)
+            .where(JobRecommendation.profile_id == profile.id, JobRecommendation.state == RecommendationState.NEW)
             .values(state=RecommendationState.SEEN, surfaced_at=datetime.now(timezone.utc))
         )
         await db.commit()
@@ -40,10 +39,10 @@ async def recommendation_action(
     rec_id: str,
     data: RecommendationAction,
     request: Request,
+    profile: Profile = Depends(get_valid_profile),
     db: AsyncSession = Depends(get_db)
 ):
-    profile_id = get_current_profile_id(request)
-    result = await db.execute(select(JobRecommendation).where(JobRecommendation.id == rec_id, JobRecommendation.profile_id == profile_id))
+    result = await db.execute(select(JobRecommendation).where(JobRecommendation.id == rec_id, JobRecommendation.profile_id == profile.id))
     rec = result.scalar_one_or_none()
     if not rec:
         raise HTTPException(status_code=404, detail="Recommendation not found")
@@ -64,7 +63,7 @@ async def recommendation_action(
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
             
-        app_res = await db.execute(select(Application).where(Application.job_id == job.id, Application.profile_id == profile_id))
+        app_res = await db.execute(select(Application).where(Application.job_id == job.id, Application.profile_id == profile.id))
         existing_app = app_res.scalar_one_or_none()
         
         if not existing_app:
@@ -72,7 +71,7 @@ async def recommendation_action(
             new_app = Application(
                 id=app_id,
                 job_id=job.id,
-                profile_id=profile_id,
+                profile_id=profile.id,
                 status=ApplicationStatus.PREPARING,
                 application_url=job.canonical_apply_url
             )

@@ -137,7 +137,8 @@ async def test_api_jobs_endpoints(search_db_session, client):
         assert data["items"][0]["title"] == "Senior Python Engineer"
         
         # Test match
-        resp_match = await client.get("/jobs/match")
+        profile = (await search_db_session.execute(select(Profile))).scalar_one()
+        resp_match = await client.get("/jobs/match", headers={"X-Profile-ID": profile.id})
         assert resp_match.status_code == 200
         data_match = resp_match.json()
         assert len(data_match["items"]) >= 1

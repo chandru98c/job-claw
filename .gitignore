@@ -30,3 +30,8 @@ revert.py
 # OS / IDE
 .DS_Store
 .vscode/
+docs/
+
+# Agent Prompts
+AGENTS.md
+CLAUDE.md

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from arq import create_pool
 from arq.connections import RedisSettings
 from app.core.config import settings
-from app.api import tasks, sse, system, jobs, sources, engines, applications, mock_ats, saved_searches, recommendations
+from app.api import tasks, sse, system, jobs, sources, engines, applications, mock_ats, saved_searches, recommendations, profiles
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,3 +43,4 @@ app.include_router(applications.router)
 app.include_router(mock_ats.router)
 app.include_router(saved_searches.router)
 app.include_router(recommendations.router)
+app.include_router(profiles.router)

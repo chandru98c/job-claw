@@ -54,21 +54,6 @@ class Source(Base):
 
     job_provenances = relationship("JobSourceProvenance", back_populates="source")
 
-class UserProfile(Base):
-    __tablename__ = "user_profiles"
-    
-    id = Column(String, primary_key=True, default=generate_uuid)
-    name = Column(String, nullable=False)
-    
-    # Matching Preferences
-    keywords = Column(JSON, nullable=True, default=list)
-    locations = Column(JSON, nullable=True, default=list)
-    
-    # Could add more fields later: settings, preferences, etc.
-    settings = Column(JSON, nullable=True)
-    
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 class Job(Base):
     """The Canonical Job"""

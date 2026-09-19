@@ -39,7 +39,20 @@ export default function EnginesPage() {
         setLoading(false);
       }
     };
+    
+    const fetchActiveTask = async () => {
+      try {
+        const res = await api.get<{task_id: string | null}>("/tasks/active?worker_type=discovery_task&target_id=global_discovery_run");
+        if (res.task_id) {
+          setDiscoveryTaskId(res.task_id);
+        }
+      } catch (err) {
+        console.error("Failed to fetch active task", err);
+      }
+    };
+    
     fetchData();
+    fetchActiveTask();
   }, []);
 
   const handleRunDiscovery = async () => {
@@ -146,7 +159,7 @@ export default function EnginesPage() {
       <h2 className="text-xl font-semibold text-white mb-4">ATS Adapter Registry</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
         {data.adapters.map((adapter) => (
-          <div key={adapter.name} className="bg-zinc-900/50 border border-white/5 hover:border-white/20 transition-colors rounded-xl p-5 flex flex-col cursor-default">
+          <div key={adapter.name} className="bg-zinc-900/50 border border-white/5 rounded-xl p-5 flex flex-col cursor-default">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
@@ -160,57 +173,15 @@ export default function EnginesPage() {
                   </div>
                 </div>
               </div>
-              <span className="text-xs font-medium px-2 py-1 bg-zinc-800 text-zinc-400 rounded">v1.2</span>
             </div>
             <div className="mt-auto space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-500">Acquisition Method</span>
                 <span className="text-zinc-300 font-medium">{adapter.type}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Avg Latency</span>
-                <span className="text-zinc-300 font-medium">{adapter.latency}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">24h Requests</span>
-                <span className="text-zinc-300 font-medium">{adapter.requests}</span>
-              </div>
             </div>
           </div>
         ))}
-        
-        <div className="border border-dashed border-white/10 hover:border-white/30 hover:bg-white/[0.02] transition-colors rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer min-h-[180px]">
-          <div className="w-12 h-12 rounded-full bg-zinc-900 flex items-center justify-center mb-3">
-            <div className="text-2xl font-light text-zinc-500">+</div>
-          </div>
-          <div className="font-medium text-zinc-400">Register New Adapter</div>
-        </div>
-      </div>
-      
-      <div className="bg-zinc-900/30 border border-white/5 rounded-2xl p-6">
-        <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
-          <Cpu className="w-5 h-5 text-zinc-400" />
-          Pipeline Configuration
-        </h2>
-        
-        <div className="space-y-4">
-          {[
-            { name: "Browser Fallback Policy", desc: "Allow JS rendering when HTTP acquisition fails", active: true },
-            { name: "Strict Domain Boundary", desc: "Prevent navigation outside of origin domain", active: true },
-            { name: "Rate Limiting", desc: "Enforce exponential backoff on 429s", active: true },
-            { name: "Local SSRF Protection", desc: "Block internal IPs and AWS metadata endpoints", active: true },
-          ].map((setting, i) => (
-            <div key={i} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
-              <div>
-                <div className="font-medium text-zinc-200">{setting.name}</div>
-                <div className="text-sm text-zinc-500">{setting.desc}</div>
-              </div>
-              <div className={`w-12 h-6 rounded-full transition-colors relative ${setting.active ? 'bg-purple-500' : 'bg-zinc-700'}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${setting.active ? 'left-7' : 'left-1'}`} />
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );

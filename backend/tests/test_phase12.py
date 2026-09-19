@@ -105,28 +105,23 @@ async def test_recommendation_action_boundary(setup_test_data):
         from app.api.recommendations import recommendation_action
         from app.schemas.recommendation import RecommendationAction
         
-        # Monkeypatch get_current_profile_id inside recommendations
-        import app.api.recommendations as rec_api
-        original_get = rec_api.get_current_profile_id
-        rec_api.get_current_profile_id = lambda r: profile_id
+        # Load profile
+        from sqlalchemy import select
+        profile = (await db.execute(select(Profile).where(Profile.id == profile_id))).scalar_one()
+
+        await recommendation_action(
+            rec.id, 
+            RecommendationAction(action="prepare"), 
+            DummyRequest(), 
+            profile,
+            db
+        )
         
-        try:
-            await recommendation_action(
-                rec.id, 
-                RecommendationAction(action="prepare"), 
-                DummyRequest(), 
-                db
-            )
-            
-            # Verify Application state
-            from sqlalchemy import select
-            app_res = await db.execute(select(Application).where(Application.profile_id == profile_id))
-            application = app_res.scalar_one()
-            
-            assert application is not None
-            assert application.status == ApplicationStatus.PREPARING
-            # It must not be SUBMITTED
-            assert application.status != ApplicationStatus.SUBMITTED
-            
-        finally:
-            rec_api.get_current_profile_id = original_get
+        # Verify Application state
+        app_res = await db.execute(select(Application).where(Application.profile_id == profile_id))
+        application = app_res.scalar_one()
+        
+        assert application is not None
+        assert application.status == ApplicationStatus.PREPARING
+        # It must not be SUBMITTED
+        assert application.status != ApplicationStatus.SUBMITTED
