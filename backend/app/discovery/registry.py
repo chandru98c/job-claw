@@ -21,7 +21,7 @@ import logging
 from typing import Optional
 
 from app.discovery.interfaces import DiscoveryStrategy
-from app.schemas.discovery import StrategyCandidate
+from app.schemas.discovery import StrategyCandidate, SourceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class StrategyRegistry:
         """Return all strategies ordered by priority (lower = higher priority)."""
         return sorted(self._strategies.values(), key=lambda s: s.priority)
 
-    def find_candidates(self, url: str) -> list[StrategyCandidate]:
+    def find_candidates(self, url: str, source: Optional[SourceConfig] = None) -> list[StrategyCandidate]:
         """
         Evaluate a URL against all registered strategies and collect candidates.
 
@@ -76,8 +76,14 @@ class StrategyRegistry:
 
         for strategy in self.list():
             try:
-                if strategy.recognizes_url(url):
-                    generated = strategy.generate_candidates(url)
+                applicable = False
+                if source and strategy.can_handle(source):
+                    applicable = True
+                elif strategy.recognizes_url(url):
+                    applicable = True
+
+                if applicable:
+                    generated = strategy.generate_candidates(url, source)
                     candidates.extend(generated)
             except Exception as e:
                 # One strategy failure must never crash the entire registry

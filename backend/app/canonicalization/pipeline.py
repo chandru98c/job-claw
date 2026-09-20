@@ -55,6 +55,7 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
         # Create Provenance
         prov = JobSourceProvenance(
             job_id=job.id,
+            source_id=raw_job.provenance.source_id,
             source_type=raw_job.provenance.source_type,
             source_job_id=raw_job.provenance.source_job_id,
             source_url=normalize_url(raw_job.provenance.source_url),
@@ -107,6 +108,7 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
         if not prov_exists:
             new_prov = JobSourceProvenance(
                 job_id=existing_job.id,
+                source_id=raw_job.provenance.source_id,
                 source_type=raw_job.provenance.source_type,
                 source_job_id=raw_job.provenance.source_job_id,
                 source_url=norm_source_url,

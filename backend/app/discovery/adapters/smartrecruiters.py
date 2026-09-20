@@ -11,6 +11,7 @@ from app.schemas.discovery import (
     StrategyExecutionResult,
     RawJob,
     DiscoveryProvenanceDTO,
+    SourceConfig,
     DiscoveryError,
     DiscoveryErrorType,
 )
@@ -50,7 +51,7 @@ class SmartRecruitersAdapter(ATSAdapter):
     def recognizes_url(self, url: str) -> bool:
         return self.extract_board_identifier(url) is not None
 
-    def generate_candidates(self, url: str) -> list[StrategyCandidate]:
+    def generate_candidates(self, url: str = None, source: Optional[SourceConfig] = None) -> list[StrategyCandidate]:
         board_token = self.extract_board_identifier(url)
         if not board_token:
             return []

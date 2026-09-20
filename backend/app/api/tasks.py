@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database.database import get_db
 from app.database.models import Task, TaskEvent, TaskStatus, TaskEventType
-from typing import Dict, Any
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -47,7 +46,10 @@ async def create_task(request: Request, target_id: str = "dummy", worker_type: s
     await db.commit()
     print("DB Committed.")
     
-    redis_pool = request.app.state.redis
+    redis_pool = getattr(request.app.state, "redis", None)
+    if redis_pool is None:
+        raise HTTPException(status_code=503, detail="Redis unavailable")
+
     print("Enqueueing job...")
     job = await redis_pool.enqueue_job(worker_type, task_id, target_id, _job_id=task_id)
     print("Job enqueued.")
@@ -109,7 +111,9 @@ async def cancel_task(request: Request, task_id: str, db: AsyncSession = Depends
         raise HTTPException(status_code=400, detail="Task already finished")
 
     # Call ARQ abort
-    redis_pool = request.app.state.redis
+    redis_pool = getattr(request.app.state, "redis", None)
+    if redis_pool is None:
+        raise HTTPException(status_code=503, detail="Redis unavailable")
     # Try to abort the job via ARQ. The worker must have `allow_abort_jobs=True`
     # and catch `asyncio.CancelledError`.
     from arq.jobs import Job
@@ -120,7 +124,7 @@ async def cancel_task(request: Request, task_id: str, db: AsyncSession = Depends
     # just in case the worker never picks it up. If it's already RUNNING, the CancelledError 
     # will update the DB. We'll mark it cancelling here for UI responsiveness.
     if aborted:
-        task.status = TaskStatus.CANCELLED
+        setattr(task, "status", TaskStatus.CANCELLED)
         event = TaskEvent(task_id=task_id, event_type=TaskEventType.CANCELLED, payload={"reason": "User requested cancel"})
         db.add(event)
         await db.commit()

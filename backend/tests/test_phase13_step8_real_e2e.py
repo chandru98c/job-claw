@@ -92,7 +92,7 @@ async def test_real_backend_e2e(client, async_db_session: AsyncSession):
     await async_db_session.commit()
     
     # Ensure worker mode is not 'server' from previous test leaks
-    if hasattr(app.state, "redis"):
+    if getattr(app.state, "redis", None) is not None:
         await app.state.redis.set("worker:mode", "local")
     
     # 1. Create a Saved Search

@@ -13,14 +13,15 @@ from app.schemas.discovery import (
     DiscoveryProvenanceDTO,
     DiscoveryError,
     DiscoveryErrorType,
+    SourceConfig,
 )
 from app.core.http import SafeHTTPClient
 
 logger = logging.getLogger(__name__)
 
-# Pattern 1: jobs.lever.co/{token}
+# Pattern 1: jobs.lever.co/{token} or api.lever.co/v0/postings/{token}
 _LEVER_BOARD_PATTERN = re.compile(
-    r"^https?://jobs\.lever\.co/([a-zA-Z0-9_-]+)(?:/.*)?$",
+    r"^https?://(?:jobs\.lever\.co|api\.lever\.co/v0/postings)/([a-zA-Z0-9_-]+)(?:/.*|\?.*)?$",
     re.IGNORECASE,
 )
 
@@ -61,8 +62,16 @@ class LeverAdapter(ATSAdapter):
     def recognizes_url(self, url: str) -> bool:
         return self.extract_board_identifier(url) is not None
 
-    def generate_candidates(self, url: str) -> list[StrategyCandidate]:
-        board_token = self.extract_board_identifier(url)
+    def generate_candidates(self, url: str = None, source: SourceConfig = None) -> list[StrategyCandidate]:
+        source_id = None
+        if source and source.identifier:
+            board_token = source.identifier
+            source_id = source.source_id
+        elif url:
+            board_token = self.extract_board_identifier(url)
+        else:
+            return []
+            
         if not board_token:
             return []
 
@@ -75,8 +84,9 @@ class LeverAdapter(ATSAdapter):
                 adapter_id=self.strategy_id,
                 target_url=api_url,
                 evidence=f"Lever board token: {board_token}",
-                confidence=0.95,
-                source="url_pattern_match",
+                confidence=0.95 if url else 1.0,
+                source="url_pattern_match" if url else "source_config",
+                source_id=source_id,
                 priority=self.priority,
             )
         ]
@@ -177,22 +187,47 @@ class LeverAdapter(ATSAdapter):
                     location = j.get("country", "")
 
                 apply_url = j.get("hostedUrl", "") or j.get("applyUrl", "")
+                job_id = str(j.get("id", ""))
+                
+                if not job_id:
+                    continue
+                    
+                description = j.get("descriptionPlain", "") or j.get("description", "")
+                employment_type = categories.get("commitment", "")
+                
+                remote_status = None
+                workplace = j.get("workplaceType", "")
+                if workplace and workplace.lower() == "remote":
+                    remote_status = "Remote"
+                elif location and "remote" in location.lower():
+                    remote_status = "Remote"
+                
+                provider_metadata = {
+                    "department": categories.get("department", "") or categories.get("team", ""),
+                    "workplaceType": workplace,
+                    "allLocations": categories.get("allLocations", []),
+                    "lists": j.get("lists", [])
+                }
 
                 raw_jobs.append(
                     RawJob(
                         provenance=DiscoveryProvenanceDTO(
                             strategy_id=self.strategy_id,
                             adapter_id=self.strategy_id,
+                            source_id=candidate.source_id,
                             source_type="direct_ats",
                             source_url=candidate.target_url,
-                            source_job_id=str(j.get("id", "")),
+                            source_job_id=job_id,
                             apply_url=apply_url,
                             provider_name=self.ats_name,
                         ),
                         title=title[:255],
-                        company=board_id,
+                        company=board_id[:255],
                         location=location[:255] if location else None,
-                        description=None,
+                        description=description[:50000] if description else None,
+                        employment_type=employment_type[:128] if employment_type else None,
+                        remote_status=remote_status[:64] if remote_status else None,
+                        provider_metadata=provider_metadata
                     )
                 )
             return raw_jobs

@@ -1,40 +1,48 @@
 import { useState, useEffect } from "react";
 import { useAppState } from "@/components/providers";
+import { api } from "@/lib/api";
 
 export interface SystemStatus {
   core_online: boolean;
-  worker_status: "idle" | "busy";
+  worker_status: "idle" | "busy" | "offline" | "unknown";
   active_tasks: number;
+  redis_connected?: boolean;
+  db_connected?: boolean;
+  total_engines?: number;
+  workers_online?: number;
+  discovery_running_tasks?: number;
+  active_engines?: number;
+  inactive_engines?: number;
+  discovery_queued_tasks?: number;
 }
+
+const FALLBACK_STATUS: SystemStatus = {
+  core_online: false,
+  worker_status: "unknown",
+  active_tasks: 0,
+  redis_connected: false,
+  db_connected: false,
+  total_engines: 0,
+  workers_online: 0,
+  discovery_running_tasks: 0,
+};
 
 export function useTaskStatus() {
   const { apiMode } = useAppState();
-  const [status, setStatus] = useState<SystemStatus>({
-    core_online: false,
-    worker_status: "idle",
-    active_tasks: 0,
-  });
+  const [status, setStatus] = useState<SystemStatus>(FALLBACK_STATUS);
 
   useEffect(() => {
     let isMounted = true;
-    
+
     const fetchStatus = async () => {
       try {
-        const baseUrl = "http://127.0.0.1:8000";
-        const res = await fetch(`${baseUrl}/system/status`);
-        if (!res.ok) throw new Error("Failed to fetch status");
-        
-        const data = await res.json();
+        const data = await api.get<SystemStatus>("/system/status");
         if (isMounted) {
           setStatus(data);
         }
-      } catch (err) {
+      } catch {
         if (isMounted) {
-          setStatus({
-            core_online: false,
-            worker_status: "idle",
-            active_tasks: 0,
-          });
+          setStatus(FALLBACK_STATUS);
         }
       }
     };

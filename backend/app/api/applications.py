@@ -65,7 +65,9 @@ async def create_application(request: Request, data: ApplicationCreate, profile:
         raise HTTPException(status_code=409, detail="Application already exists for this job")
         
     # Enqueue
-    redis = request.app.state.redis
+    redis = getattr(request.app.state, "redis", None)
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Redis unavailable")
     await redis.enqueue_job("prepare_application_task", task_id, app_id, _job_id=task_id)
     
     return new_app
@@ -126,7 +128,9 @@ async def submit_application(request: Request, application_id: str, profile: Pro
     
     await db.commit()
     
-    redis = request.app.state.redis
+    redis = getattr(request.app.state, "redis", None)
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Redis unavailable")
     await redis.enqueue_job("submit_application_task", task_id, application_id, _job_id=task_id)
     
     return {"status": app_record.status.value, "task_id": task_id}

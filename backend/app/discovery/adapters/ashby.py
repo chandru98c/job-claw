@@ -13,6 +13,7 @@ from app.schemas.discovery import (
     DiscoveryProvenanceDTO,
     DiscoveryError,
     DiscoveryErrorType,
+    SourceConfig,
 )
 from app.core.http import SafeHTTPClient
 
@@ -50,20 +51,30 @@ class AshbyAdapter(ATSAdapter):
     def recognizes_url(self, url: str) -> bool:
         return self.extract_board_identifier(url) is not None
 
-    def generate_candidates(self, url: str) -> list[StrategyCandidate]:
-        board_token = self.extract_board_identifier(url)
+    def generate_candidates(self, url: str = None, source: SourceConfig = None) -> list[StrategyCandidate]:
+        source_id = None
+        if source and source.identifier:
+            board_token = source.identifier
+            source_id = source.source_id
+        elif url:
+            board_token = self.extract_board_identifier(url)
+        else:
+            return []
+            
         if not board_token:
             return []
 
         # We probe the career page itself. Ashby is an SPA, so it usually requires JS.
+        target_url = f"https://jobs.ashbyhq.com/{board_token}"
         return [
             StrategyCandidate(
                 strategy_id=self.strategy_id,
                 adapter_id=self.strategy_id,
-                target_url=url, # Just use the input URL
+                target_url=target_url,
                 evidence=f"Ashby board token: {board_token}",
-                confidence=0.95,
-                source="url_pattern_match",
+                confidence=0.95 if url else 1.0,
+                source="url_pattern_match" if url else "source_config",
+                source_id=source_id,
                 priority=self.priority,
             )
         ]
@@ -157,22 +168,43 @@ class AshbyAdapter(ATSAdapter):
 
                 location = j.get("locationName", "")
                 apply_url = j.get("jobPageUrl", "")
+                job_id = str(j.get("id", ""))
+                
+                if not job_id:
+                    continue
+                    
+                if not apply_url:
+                    apply_url = f"https://jobs.ashbyhq.com/{board_id}/{job_id}"
+
+                description = j.get("descriptionHtml", "")
+                employment_type = j.get("employmentType", "")
+                remote_status = "Remote" if j.get("isRemote") else None
+                
+                provider_metadata = {
+                    "department": j.get("departmentName", ""),
+                    "secondaryLocations": j.get("secondaryLocations", []),
+                    "compensationTier": j.get("compensationTier", {})
+                }
 
                 raw_jobs.append(
                     RawJob(
                         provenance=DiscoveryProvenanceDTO(
                             strategy_id=self.strategy_id,
                             adapter_id=self.strategy_id,
+                            source_id=candidate.source_id,
                             source_type="direct_ats",
                             source_url=candidate.target_url,
-                            source_job_id=str(j.get("id", "")),
+                            source_job_id=job_id,
                             apply_url=apply_url,
                             provider_name=self.ats_name,
                         ),
                         title=title[:255],
-                        company=board_id,
+                        company=board_id[:255],
                         location=location[:255] if location else None,
-                        description=None,
+                        description=description[:50000] if description else None,
+                        employment_type=employment_type[:128] if employment_type else None,
+                        remote_status=remote_status[:64] if remote_status else None,
+                        provider_metadata=provider_metadata
                     )
                 )
             return raw_jobs

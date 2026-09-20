@@ -16,6 +16,11 @@ class JobStatus(str, enum.Enum):
     BLOCKED = "BLOCKED"
     UNKNOWN = "UNKNOWN"
 
+class CircuitStatus(str, enum.Enum):
+    CLOSED = "CLOSED"
+    OPEN = "OPEN"
+    HALF_OPEN = "HALF_OPEN"
+
 class TaskStatus(str, enum.Enum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
@@ -49,10 +54,54 @@ class Source(Base):
     ats_type = Column(String, nullable=True)
     discovered_endpoints = Column(JSON, nullable=True)
     
+    # Runtime Health
+    last_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    last_success_at = Column(DateTime(timezone=True), nullable=True)
+    last_failure_at = Column(DateTime(timezone=True), nullable=True)
+    consecutive_failures = Column(Integer, default=0)
+    last_status_code = Column(Integer, nullable=True)
+    last_error = Column(Text, nullable=True)
+    circuit_status = Column(Enum(CircuitStatus), default=CircuitStatus.CLOSED, index=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     job_provenances = relationship("JobSourceProvenance", back_populates="source")
+    method_performances = relationship("DiscoveryMethodPerformance", back_populates="source", cascade="all, delete-orphan")
+
+
+class DiscoveryMethodPerformance(Base):
+    """Tracks historical performance of discovery methods per source"""
+    __tablename__ = "discovery_method_performances"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    source_id = Column(String, ForeignKey("sources.id"), nullable=False, index=True)
+    method = Column(String, nullable=False, index=True)
+    
+    runs = Column(Integer, default=0)
+    successful_runs = Column(Integer, default=0)
+    failed_runs = Column(Integer, default=0)
+    jobs_found = Column(Integer, default=0)
+    valid_jobs = Column(Integer, default=0)
+    unique_jobs = Column(Integer, default=0)
+    duplicate_jobs = Column(Integer, default=0)
+    invalid_jobs = Column(Integer, default=0)
+    
+    avg_latency_ms = Column(Float, default=0.0)
+    avg_field_completeness = Column(Float, default=0.0)
+    failure_rate = Column(Float, default=0.0)
+    quality_score = Column(Float, default=0.0)
+    
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
+    last_success_at = Column(DateTime(timezone=True), nullable=True)
+    last_failure_at = Column(DateTime(timezone=True), nullable=True)
+    
+    __table_args__ = (
+        UniqueConstraint('source_id', 'method', name='uq_source_method_perf'),
+    )
+    
+    source = relationship("Source", back_populates="method_performances")
 
 
 class Job(Base):
@@ -96,9 +145,14 @@ class JobSourceProvenance(Base):
     source_type = Column(String, nullable=False) # e.g., 'direct_ats', 'linkedin', 'indeed'
     source_job_id = Column(String, nullable=True) # The ID used by the source
     source_url = Column(String, nullable=False)
+    discovery_method = Column(String, nullable=True) # Provenance/telemetry ONLY
     
     raw_payload = Column(JSON, nullable=True) # Bounded payload for debugging
     observed_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    __table_args__ = (
+        UniqueConstraint('source_id', 'source_job_id', name='uq_prov_source_job'),
+    )
     
     job = relationship("Job", back_populates="provenances")
     source = relationship("Source", back_populates="job_provenances")
@@ -124,6 +178,7 @@ class Profile(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     name = Column(String, nullable=False)
+    is_active = Column(Boolean, default=False, nullable=False, index=True)
     
     # Auto-Apply / Matching Fields
     email = Column(String, nullable=True)

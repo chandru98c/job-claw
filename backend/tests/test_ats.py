@@ -35,7 +35,7 @@ def test_workable_recognition():
     
     assert adapter.extract_board_identifier("https://apply.workable.com/revolut") == "revolut"
     assert adapter.extract_board_identifier("https://workable.com/revolut") == "revolut"
-    assert adapter.extract_board_identifier("https://apply.workable.com/api/v3/accounts/revolut/jobs") is None # handled in extract_board_identifier differently or ignored
+    assert adapter.extract_board_identifier("https://apply.workable.com/api/v3/accounts/revolut/jobs") == "revolut"
 
 def test_smartrecruiters_recognition():
     adapter = SmartRecruitersAdapter()

@@ -13,6 +13,20 @@ from enum import Enum
 import json
 import uuid
 
+class SourceConfig(BaseModel):
+    """
+    Configuration definition for a source, loaded from the registry.
+    Adapters receive this instead of depending on PostgreSQL models.
+    """
+    source_id: str
+    company: str
+    domain: str
+    careers_url: Optional[str] = None
+    source_type: str = "ats"
+    ats_type: Optional[str] = None
+    identifier: Optional[str] = None
+    enabled: bool = True
+
 # ─── Field Limits ───────────────────────────────────────────────────────────
 
 MAX_TITLE_LEN = 512
@@ -78,6 +92,7 @@ class StrategyCandidate(BaseModel):
     evidence: Optional[str] = Field(default=None, max_length=512)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     source: Optional[str] = Field(default=None, max_length=256)
+    source_id: Optional[str] = Field(default=None, max_length=MAX_SOURCE_ID_LEN)
     priority: int = Field(default=100, ge=0, le=1000)
 
     # Validation state — only the pipeline may set this to VALIDATED
@@ -101,11 +116,13 @@ class DiscoveryProvenanceDTO(BaseModel):
     """
     strategy_id: str = Field(max_length=MAX_STRATEGY_ID_LEN)
     adapter_id: Optional[str] = Field(default=None, max_length=MAX_STRATEGY_ID_LEN)
+    source_id: Optional[str] = Field(default=None, max_length=MAX_SOURCE_ID_LEN)
     source_type: str = Field(max_length=128)         # e.g. 'direct_ats', 'aggregator'
     source_url: str = Field(max_length=MAX_URL_LEN)
     source_job_id: Optional[str] = Field(default=None, max_length=MAX_SOURCE_ID_LEN)
     apply_url: Optional[str] = Field(default=None, max_length=MAX_URL_LEN)
     provider_name: Optional[str] = Field(default=None, max_length=256)  # e.g. 'Greenhouse'
+    discovery_method: Optional[str] = Field(default=None, max_length=MAX_STRATEGY_ID_LEN) # telemetry only
     discovered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -168,3 +185,17 @@ class StrategyExecutionResult(BaseModel):
     raw_jobs: list[RawJob] = Field(default_factory=list)
     errors: list[DiscoveryError] = Field(default_factory=list)
     success: bool = True
+
+class DiscoveryMethodResult(BaseModel):
+    """Result of evaluating a single discovery method."""
+    method: str
+    success: bool
+    jobs_found: int = 0
+    valid_jobs: int = 0
+    unique_jobs: int = 0
+    duplicate_jobs: int = 0
+    invalid_jobs: int = 0
+    latency_ms: float = 0.0
+    field_completeness: float = 0.0
+    error_type: Optional[str] = None
+    error_message: Optional[str] = None

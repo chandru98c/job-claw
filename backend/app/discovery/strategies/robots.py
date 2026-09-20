@@ -79,7 +79,7 @@ class RobotsStrategy(DiscoveryStrategy):
         except Exception:
             return False
 
-    def generate_candidates(self, url: str) -> list[StrategyCandidate]:
+    def generate_candidates(self, url: str = None, source: Optional[SourceConfig] = None) -> list[StrategyCandidate]:
         try:
             parsed = urllib.parse.urlparse(url)
             robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"

@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Tests for StrategyRegistry, CandidatePipeline, and security enforcement.
 """
@@ -13,6 +14,7 @@ from app.schemas.discovery import (
     StrategyCandidate,
     StrategyExecutionResult,
     CandidateState,
+    SourceConfig,
     RawJob,
     DiscoveryProvenanceDTO,
 )
@@ -41,11 +43,13 @@ class DummyStrategy(DiscoveryStrategy):
     def recognizes_url(self, url):
         return self._recognizes(url)
 
-    def generate_candidates(self, url):
+    def generate_candidates(self, url: str = None, source: Optional[SourceConfig] = None) -> list[StrategyCandidate]:
+        if url and not self.recognizes_url(url):
+            return []
         return [
             StrategyCandidate(
                 strategy_id=self._sid,
-                target_url=url,
+                target_url=url or "https://example.com/jobs",
                 evidence="test",
                 confidence=0.5,
                 priority=self._priority,
@@ -73,8 +77,8 @@ class CrashingStrategy(DiscoveryStrategy):
     def recognizes_url(self, url):
         return True
 
-    def generate_candidates(self, url):
-        raise RuntimeError("I crashed!")
+    def generate_candidates(self, url: str = None, source: Optional[SourceConfig] = None) -> list[StrategyCandidate]:
+        raise RuntimeError("I crash during generation")
 
     async def execute(self, candidate, http_client):
         raise RuntimeError("I crashed!")

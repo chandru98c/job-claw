@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useTaskStream } from "@/hooks/useTaskStream";
 import { Loader2, AlertCircle, CheckCircle, Save, Send, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 interface AppField {
   field_id: string;
@@ -40,6 +41,7 @@ export default function ApplicationReviewPage() {
   // Editable fields state
   const [fieldValues, setFieldValues] = useState<Record<string, any>>({});
   const [savingFields, setSavingFields] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
 
   // We track the active task ID for SSE. Initially from URL if preparing,
@@ -103,11 +105,15 @@ export default function ApplicationReviewPage() {
   };
 
   const handleApprove = async () => {
+    if (isApproving) return;
+    setIsApproving(true);
     try {
       await api.post(`/applications/${id}/approve`, {});
       await fetchApplication();
     } catch (err: any) {
       alert(err.message || "Failed to approve application");
+    } finally {
+      setIsApproving(false);
     }
   };
 
@@ -130,18 +136,18 @@ export default function ApplicationReviewPage() {
   if (loading) {
     return (
       <div className="flex justify-center py-20">
-        <Loader2 className="w-8 h-8 text-pink-500 animate-spin" />
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
       </div>
     );
   }
 
   if (error || !app) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <div className="text-center py-12 bg-red-500/10 border border-red-500/20 rounded-xl">
-          <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-4" />
-          <p className="text-red-400">{error || "Application not found"}</p>
-          <Link href="/recommendations" className="text-pink-500 hover:underline mt-4 inline-block">
+      <div className="flex flex-col h-full max-w-4xl mx-auto w-full px-6 py-8 overflow-y-auto">
+        <div className="text-center py-12 bg-destructive/10 border border-destructive/20 rounded-[24px]">
+          <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-4" />
+          <p className="text-destructive">{error || "Application not found"}</p>
+          <Link href="/recommendations" className="text-primary hover:underline mt-4 inline-block">
             Back to Recommendations
           </Link>
         </div>
@@ -158,42 +164,42 @@ export default function ApplicationReviewPage() {
   const isFinalState = ["SUBMITTED", "FAILED", "SUBMISSION_STATUS_UNKNOWN", "CANCELLED", "UNSUPPORTED"].includes(app.status);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 h-full flex flex-col overflow-y-auto">
-      <Link href="/recommendations" className="text-zinc-400 hover:text-white flex items-center gap-2 mb-6 w-fit">
+    <div className="flex flex-col h-full max-w-4xl mx-auto w-full px-6 py-8 overflow-y-auto">
+      <Link href="/recommendations" className="text-muted-foreground hover:text-white flex items-center gap-2 mb-6 w-fit">
         <ArrowLeft className="w-4 h-4" /> Back
       </Link>
       
       <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/10">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Application Review</h1>
-          <div className="text-sm text-zinc-400">Application ID: {app.id}</div>
+          <div className="text-sm text-muted-foreground">Application ID: {app.id}</div>
         </div>
-        <div className="px-4 py-2 bg-zinc-800 rounded-lg text-sm font-medium border border-white/5">
-          Status: <span className="text-pink-400">{app.status}</span>
+        <div className="px-4 py-2 bg-zinc-800 rounded-[24px] text-sm font-medium border border-border">
+          Status: <span className="text-primary">{app.status}</span>
         </div>
       </div>
 
       {/* Progress / SSE Block */}
       {(isPreparing || isSubmitting) && (
-        <div className="bg-zinc-900 border border-white/10 rounded-xl p-6 mb-8 flex flex-col items-center justify-center text-center">
-          <Loader2 className="w-10 h-10 text-pink-500 animate-spin mb-4" />
+        <div className="bg-card border border-white/10 rounded-[24px] p-6 mb-8 flex flex-col items-center justify-center text-center">
+          <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
           <h3 className="text-lg font-medium text-white mb-2">
             {isPreparing ? "Preparing Application..." : "Submitting Application..."}
           </h3>
-          <p className="text-zinc-400 mb-4">
+          <p className="text-muted-foreground mb-4">
             This may take a few moments as we interact with the external ATS.
           </p>
           
           {taskStream.isActive ? (
-            <div className="bg-black/50 px-4 py-2 rounded-lg text-sm text-zinc-300 font-mono">
+            <div className="bg-black/50 px-4 py-2 rounded-[24px] text-sm text-muted-foreground font-mono">
               Task Status: {taskStream.status}
               {taskStream.payload?.msg && (
-                <span className="block mt-1 text-zinc-500">"{taskStream.payload.msg}"</span>
+                <span className="block mt-1 text-muted-foreground">"{taskStream.payload.msg}"</span>
               )}
             </div>
           ) : (
-            <div className="text-sm text-zinc-500">
-              No live progress available. <button onClick={fetchApplication} className="text-pink-500 hover:underline">Refresh</button>
+            <div className="text-sm text-muted-foreground">
+              No live progress available. <button onClick={fetchApplication} className="text-primary hover:underline">Refresh</button>
             </div>
           )}
         </div>
@@ -201,11 +207,11 @@ export default function ApplicationReviewPage() {
 
       {/* Fields Review Block */}
       {isReviewable && app.fields && (
-        <div className="bg-zinc-900 border border-white/10 rounded-xl p-6 mb-8">
+        <div className="bg-card border border-white/10 rounded-[24px] p-6 mb-8">
           <h2 className="text-xl font-semibold text-white mb-6">Review Application Data</h2>
           
           {hasUnanswered && (
-            <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 rounded-lg mb-6 flex gap-3">
+            <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 rounded-[24px] mb-6 flex gap-3">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium">Missing Required Fields</p>
@@ -218,14 +224,14 @@ export default function ApplicationReviewPage() {
 
           <div className="space-y-6">
             {app.fields.map(f => (
-              <div key={f.field_id} className="border-b border-white/5 pb-4 last:border-0 last:pb-0">
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  {f.label} {f.required && <span className="text-red-500">*</span>}
+              <div key={f.field_id} className="border-b border-border pb-4 last:border-0 last:pb-0">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                  {f.label} {f.required && <span className="text-destructive">*</span>}
                 </label>
                 
                 {f.type === "select" ? (
                   <select 
-                    className="w-full bg-zinc-950 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-pink-500 disabled:opacity-50"
+                    className="w-full bg-background border border-white/10 rounded-[24px] px-4 py-2.5 text-white focus:outline-none focus:border-primary disabled:opacity-50"
                     value={fieldValues[f.field_id] || ""}
                     onChange={e => handleFieldChange(f.field_id, e.target.value)}
                     disabled={app.status === "APPROVED"}
@@ -238,7 +244,7 @@ export default function ApplicationReviewPage() {
                 ) : f.type === "file" ? (
                   <input 
                     type="text" 
-                    className="w-full bg-zinc-950 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-pink-500 disabled:opacity-50"
+                    className="w-full bg-background border border-white/10 rounded-[24px] px-4 py-2.5 text-white focus:outline-none focus:border-primary disabled:opacity-50"
                     placeholder={f.placeholder || "Filename or URL"}
                     value={fieldValues[f.field_id] || ""}
                     onChange={e => handleFieldChange(f.field_id, e.target.value)}
@@ -247,7 +253,7 @@ export default function ApplicationReviewPage() {
                 ) : (
                   <input 
                     type={f.type === "boolean" ? "checkbox" : "text"}
-                    className={f.type === "boolean" ? "w-5 h-5 accent-pink-500" : "w-full bg-zinc-950 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-pink-500 disabled:opacity-50"}
+                    className={f.type === "boolean" ? "w-5 h-5 accent-primary" : "w-full bg-background border border-white/10 rounded-[24px] px-4 py-2.5 text-white focus:outline-none focus:border-primary disabled:opacity-50"}
                     placeholder={f.placeholder}
                     checked={f.type === "boolean" ? fieldValues[f.field_id] === "true" || fieldValues[f.field_id] === true : undefined}
                     value={f.type === "boolean" ? undefined : fieldValues[f.field_id] || ""}
@@ -258,30 +264,31 @@ export default function ApplicationReviewPage() {
                     disabled={app.status === "APPROVED"}
                   />
                 )}
-                <div className="text-xs text-zinc-500 mt-1">Source: {f.source}</div>
+                <div className="text-xs text-muted-foreground mt-1">Source: {f.source}</div>
               </div>
             ))}
           </div>
 
           <div className="mt-8 flex gap-3">
-            <button 
+            <Button 
               onClick={handleSaveFields}
               disabled={savingFields || app.status === "APPROVED"}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              variant="outline"
+              className="flex-1"
             >
               {savingFields ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Save Changes
-            </button>
+            </Button>
             
             {app.status === "READY_FOR_REVIEW" && (
-              <button 
+              <Button
                 onClick={handleApprove}
-                disabled={hasUnanswered}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-pink-600 hover:bg-pink-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:bg-zinc-800"
+                disabled={isApproving || hasUnanswered}
+                className="flex-1"
               >
-                <CheckCircle className="w-4 h-4" />
-                Approve Application
-              </button>
+                {isApproving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                {isApproving ? "Approving..." : "Approve Application"}
+              </Button>
             )}
           </div>
         </div>
@@ -289,56 +296,57 @@ export default function ApplicationReviewPage() {
 
       {/* Submission Block */}
       {app.status === "APPROVED" && (
-        <div className="bg-zinc-900 border border-green-500/20 rounded-xl p-6 mb-8 text-center">
-          <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
+        <div className="bg-card border border-primary/20 rounded-[24px] p-6 mb-8 text-center">
+          <CheckCircle className="w-12 h-12 text-primary mx-auto mb-4" />
           <h3 className="text-xl font-bold text-white mb-2">Application Approved</h3>
-          <p className="text-zinc-400 mb-6 max-w-md mx-auto">
+          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
             You have reviewed and approved all the required data. The application is now ready to be securely submitted to the employer.
           </p>
-          <button 
+          <Button 
             onClick={handleSubmit}
             disabled={isSubmittingRequest}
-            className="flex items-center justify-center gap-2 px-8 py-3 bg-green-600 hover:bg-green-500 text-white rounded-lg font-bold text-lg mx-auto transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            size="lg"
+            className="mx-auto"
           >
             {isSubmittingRequest ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
             {isSubmittingRequest ? "Submitting..." : "Submit Application Now"}
-          </button>
+          </Button>
         </div>
       )}
 
       {/* Final States */}
       {isFinalState && (
-        <div className={`bg-zinc-900 border rounded-xl p-8 text-center ${app.status === 'SUBMITTED' ? 'border-green-500/20' : app.status === 'SUBMISSION_STATUS_UNKNOWN' ? 'border-amber-500/20' : 'border-red-500/20'}`}>
+        <div className={`bg-card border rounded-[24px] p-8 text-center ${app.status === 'SUBMITTED' ? 'border-primary/20' : app.status === 'SUBMISSION_STATUS_UNKNOWN' ? 'border-amber-500/20' : 'border-destructive/20'}`}>
           {app.status === "SUBMITTED" ? (
             <>
-              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+              <CheckCircle className="w-16 h-16 text-primary mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Application Submitted!</h2>
-              <p className="text-green-400">Your application was successfully sent to the ATS.</p>
+              <p className="text-primary">Your application was successfully sent to the ATS.</p>
             </>
           ) : app.status === "SUBMISSION_STATUS_UNKNOWN" ? (
             <>
               <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Submission Outcome Uncertain</h2>
               <p className="text-amber-400 mb-4">The submission completed, but we could not confirm success with the external system.</p>
-              <p className="text-zinc-400 text-sm">Please check your email for a confirmation from the employer.</p>
+              <p className="text-muted-foreground text-sm">Please check your email for a confirmation from the employer.</p>
             </>
           ) : app.status === "CANCELLED" ? (
             <>
-              <AlertCircle className="w-16 h-16 text-zinc-500 mx-auto mb-4" />
+              <AlertCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Application Cancelled</h2>
-              <p className="text-zinc-400">The application was cancelled before completion.</p>
+              <p className="text-muted-foreground">The application was cancelled before completion.</p>
             </>
           ) : app.status === "UNSUPPORTED" ? (
             <>
-              <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <AlertCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Application Unsupported</h2>
-              <p className="text-red-400">The ATS application format for this job is not currently supported.</p>
+              <p className="text-destructive">The ATS application format for this job is not currently supported.</p>
             </>
           ) : (
             <>
-              <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <AlertCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Submission Failed</h2>
-              <p className="text-red-400">There was a problem submitting your application. Please check back later or try again.</p>
+              <p className="text-destructive">There was a problem submitting your application. Please check back later or try again.</p>
             </>
           )}
         </div>

@@ -108,14 +108,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.database import get_db
 from app.database.models import Profile
 
+from sqlalchemy import select
+
 async def get_valid_profile(request: Request, db: AsyncSession = Depends(get_db)) -> Profile:
-    profile_id = request.headers.get("x-profile-id")
-    if not profile_id:
-        raise HTTPException(status_code=400, detail="Missing X-Profile-ID header")
+    res = await db.execute(select(Profile).where(Profile.is_active == True))
+    profile = res.scalar_one_or_none()
     
-    profile = await db.get(Profile, profile_id)
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found or invalid X-Profile-ID")
+        raise HTTPException(status_code=404, detail="No active profile found. Please create or activate a profile.")
         
     return profile
 

@@ -1,18 +1,34 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import logging
 from contextlib import asynccontextmanager
+
 from arq import create_pool
 from arq.connections import RedisSettings
-from app.core.config import settings
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.api import tasks, sse, system, jobs, sources, engines, applications, mock_ats, saved_searches, recommendations, profiles
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Setup ARQ Redis Pool
-    app.state.redis = await create_pool(RedisSettings.from_dsn(settings.REDIS_URL))
+    # Setup ARQ Redis Pool (graceful fallback if Redis is temporarily unavailable)
+    app.state.redis = None
+    try:
+        app.state.redis = await create_pool(RedisSettings.from_dsn(settings.REDIS_URL))
+        logger.info("Redis pool initialized")
+    except Exception as exc:
+        logger.warning("Redis pool unavailable at startup: %s", exc)
+
     yield
+
     # Cleanup ARQ Redis Pool
-    await app.state.redis.aclose()
+    redis = getattr(app.state, "redis", None)
+    if redis is not None:
+        await redis.aclose()
+
 
 app = FastAPI(
     title="Job-Claw API",
@@ -29,9 +45,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "job-claw-backend"}
+
 
 app.include_router(tasks.router)
 app.include_router(sse.router)

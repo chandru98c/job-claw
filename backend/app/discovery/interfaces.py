@@ -21,6 +21,7 @@ from app.schemas.discovery import (
     StrategyExecutionResult,
     RawJob,
     CandidateState,
+    SourceConfig,
 )
 from app.core.http import SafeHTTPClient
 
@@ -88,11 +89,17 @@ class DiscoveryStrategy(ABC):
         Used by the registry to generate candidates.
         """
         ...
+        
+    def can_handle(self, source: SourceConfig) -> bool:
+        """
+        Returns True if this strategy can explicitly handle the given Source configuration.
+        """
+        return False
 
     @abstractmethod
-    def generate_candidates(self, url: str) -> list[StrategyCandidate]:
+    def generate_candidates(self, url: str = None, source: Optional[SourceConfig] = None) -> list[StrategyCandidate]:
         """
-        Given a URL that this strategy recognizes, produce one or more
+        Given a URL or a SourceConfig that this strategy recognizes, produce one or more
         StrategyCandidate objects in DISCOVERED state.
 
         These candidates are NOT validated yet — the CandidatePipeline
@@ -148,6 +155,12 @@ class ATSAdapter(DiscoveryStrategy):
         Returns None if the URL does not contain a valid board identifier.
         """
         ...
+        
+    def can_handle(self, source: SourceConfig) -> bool:
+        """
+        ATS Adapters generally handle sources where ats_type matches ats_name.
+        """
+        return source.ats_type and source.ats_type.lower() == self.ats_name.lower()
 
     @abstractmethod
     async def extract_jobs(

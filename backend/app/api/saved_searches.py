@@ -101,8 +101,9 @@ async def run_saved_search(
     from app.database.models import Task, TaskStatus, TaskEvent, TaskEventType
     
     # Enqueue task
-    if not hasattr(request.app.state, "redis"):
-        raise HTTPException(status_code=500, detail="Redis connection unavailable")
+    redis = getattr(request.app.state, "redis", None)
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Redis connection unavailable")
         
     # Use advisory lock to prevent duplicate concurrent runs
     lock_id = hash(search_id) & 0x7FFFFFFFFFFFFFFF
@@ -126,7 +127,7 @@ async def run_saved_search(
     
     await db.commit()
         
-    await request.app.state.redis.enqueue_job(
+    await redis.enqueue_job(
         "execute_saved_search_task",
         search_id,
         _job_id=task_id

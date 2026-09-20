@@ -64,13 +64,16 @@ def normalize_url(url: str) -> str:
         if len(path) > 1 and path.endswith('/'):
             path = path[:-1]
             
-        # Filter tracking parameters
-        tracking_params = {'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gh_jid', 'gh_src'}
+        # Filter tracking parameters. DO NOT remove gh_jid, as it identifies the actual job!
+        tracking_params = {'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gh_src'}
         query_params = parse_qsl(parsed.query, keep_blank_values=True)
         filtered_query = [(k, v) for k, v in query_params if k.lower() not in tracking_params]
         query = urlencode(filtered_query)
         
-        normalized = urlunparse((scheme, netloc, path, parsed.params, query, parsed.fragment))
+        # We strip the fragment to avoid SPA hash routing causing duplicate canonical jobs
+        # However, if the fragment is the ONLY differentiator, it might cause issues.
+        # But generally, apply URLs without fragment represent the same job.
+        normalized = urlunparse((scheme, netloc, path, parsed.params, query, ""))
         return normalized
     except Exception:
         # If parsing fails, just return the stripped URL

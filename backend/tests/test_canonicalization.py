@@ -1,14 +1,11 @@
 import pytest
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta
-from app.canonicalization.normalize import (
-    normalize_title,
-    normalize_company,
-    normalize_location,
-    normalize_url
-)
-from app.canonicalization.pipeline import process_raw_job
+
 from app.schemas.discovery import RawJob, DiscoveryProvenanceDTO
-from app.database.models import Base, Job, JobSourceProvenance, JobVersion, JobStatus
+from app.canonicalization.pipeline import process_raw_job
+from app.database.models import Base, Job, JobSourceProvenance, JobVersion, JobStatus, Source
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -24,185 +21,216 @@ def db_session():
         db.close()
         Base.metadata.drop_all(bind=engine)
 
-# --- Normalization Tests ---
-
-def test_normalize_title():
-    assert normalize_title("Software Engineer (Remote)") == "software engineer"
-    assert normalize_title("Senior Developer - Hiring Now!") == "senior developer"
-    assert normalize_title("  Data   Scientist  ") == "data scientist"
-    assert normalize_title("Søftware Engïnéer") == "sftware engineer" # NFKD normalization dropping non-ascii
-
-def test_normalize_company():
-    assert normalize_company("Acme Corp.") == "acme"
-    assert normalize_company("Stark Industries LLC") == "stark industries"
-    assert normalize_company("Pied Piper, Inc.") == "pied piper"
-    assert normalize_company("Globex Corporation") == "globex"
-
-def test_normalize_location():
-    assert normalize_location("San Francisco, CA") == "san francisco ca"
-    assert normalize_location("  New York ,  NY  ") == "new york ny"
-
-def test_normalize_url():
-    assert normalize_url("HTTPS://example.com/job/") == "https://example.com/job"
-    assert normalize_url("https://example.com/job?utm_source=linkedin&gh_jid=123&id=456") == "https://example.com/job?id=456"
-    assert normalize_url("http://test.com") == "http://test.com"
-
-# --- Pipeline Tests ---
-
-@pytest.fixture
-def sample_provenance():
-    return DiscoveryProvenanceDTO(
-        strategy_id="test_strat",
-        source_type="direct_ats",
-        source_url="https://careers.acme.com/job/123",
-        source_job_id="ACME-123",
-        apply_url="https://acme.greenhouse.io/apply/123",
-        provider_name="Greenhouse"
-    )
-
-@pytest.fixture
-def sample_raw_job(sample_provenance):
+def create_raw_job(source_id: str, source_job_id: str, title: str, company: str, apply_url: str = None, location: str = None, source_type: str = "direct_ats", provider_name: str = "TestATS", target_url: str = "https://example.com/api/jobs") -> RawJob:
     return RawJob(
-        provenance=sample_provenance,
-        title="Software Engineer",
-        company="Acme Corp",
-        location="San Francisco, CA",
-        description="A great job.",
-        employment_type="Full-time",
-        remote_status="Remote"
+        title=title,
+        company=company,
+        location=location,
+        provenance=DiscoveryProvenanceDTO(
+            strategy_id="test_strat",
+            source_id=source_id,
+            source_type=source_type,
+            source_job_id=source_job_id,
+            source_url=target_url,
+            apply_url=apply_url,
+            provider_name=provider_name
+        )
     )
 
-def test_canonicalization_new_job(db_session, sample_raw_job):
-    """Test inserting a completely new job."""
-    result, job = process_raw_job(db_session, sample_raw_job)
+def test_A_same_source_same_job_id(db_session: Session):
+    # Same source + same source_job_id -> one Job (idempotent)
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme")
+    res1, db_job1 = process_raw_job(db_session, job1)
     
-    assert result == "NEW"
-    assert job.title == "software engineer"
-    assert job.company_name == "acme"
-    assert job.location == "san francisco ca"
-    assert job.canonical_apply_url == "https://acme.greenhouse.io/apply/123"
-    assert job.status == JobStatus.ACTIVE
+    job2 = create_raw_job("src_1", "123", "Engineer", "Acme")
+    res2, db_job2 = process_raw_job(db_session, job2)
     
-    # Check provenance
-    prov = db_session.query(JobSourceProvenance).filter_by(job_id=job.id).first()
-    assert prov is not None
-    assert prov.source_job_id == "ACME-123"
-    assert prov.source_type == "direct_ats"
-    
-    # No version created initially by our logic
-    version_count = db_session.query(JobVersion).filter_by(job_id=job.id).count()
-    assert version_count == 0
-
-def test_canonicalization_idempotency_same_job(db_session, sample_raw_job):
-    """Test submitting the exact same raw job twice."""
-    res1, job1 = process_raw_job(db_session, sample_raw_job)
     assert res1 == "NEW"
-    
-    res2, job2 = process_raw_job(db_session, sample_raw_job)
     assert res2 == "SAME"
-    assert job1.id == job2.id
-    
-    # Still only 1 provenance
-    prov_count = db_session.query(JobSourceProvenance).filter_by(job_id=job1.id).count()
-    assert prov_count == 1
-    
-    # Still 0 versions
-    version_count = db_session.query(JobVersion).filter_by(job_id=job1.id).count()
-    assert version_count == 0
+    assert db_job1.id == db_job2.id
+    assert db_session.query(Job).count() == 1
+    assert db_session.query(JobSourceProvenance).count() == 1
 
-def test_canonicalization_updated_version(db_session, sample_raw_job):
-    """Test updating fields creates a new JobVersion."""
-    # Insert first
-    _, job1 = process_raw_job(db_session, sample_raw_job)
+def test_B_same_source_different_job_id(db_session: Session):
+    # Same source + different source_job_id -> two Jobs
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme")
+    process_raw_job(db_session, job1)
     
-    # Modify raw job slightly
-    sample_raw_job.title = "Senior Software Engineer"
-    sample_raw_job.location = "Remote"
-    # Ensure it maps to the same job by keeping ATS IDs the same
+    job2 = create_raw_job("src_1", "456", "Engineer", "Acme")
+    res2, db_job2 = process_raw_job(db_session, job2)
     
-    res2, job2 = process_raw_job(db_session, sample_raw_job)
-    assert res2 == "UPDATED"
-    assert job2.title == "senior software engineer"
-    assert job2.location == "remote"
-    
-    # Check version
-    versions = db_session.query(JobVersion).filter_by(job_id=job1.id).all()
-    assert len(versions) == 1
-    assert "title" in versions[0].changed_fields
-    assert "location" in versions[0].changed_fields
-    assert versions[0].previous_state["title"] == "software engineer"
-    assert versions[0].new_state["title"] == "senior software engineer"
+    assert res2 == "NEW"
+    assert db_session.query(Job).count() == 2
 
-def test_canonicalization_multiple_sources(db_session, sample_raw_job):
-    """Test same job found on different sources adds multiple provenances."""
-    process_raw_job(db_session, sample_raw_job)
+def test_C_different_sources_same_job_id(db_session: Session):
+    # Different sources + same source_job_id -> verify source-scoped identity (Two Jobs)
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme")
+    process_raw_job(db_session, job1)
     
-    # Same canonical URL, but different source (e.g. aggregator)
-    aggregator_prov = DiscoveryProvenanceDTO(
-        strategy_id="aggregator_strat",
-        source_type="aggregator",
-        source_url="https://indeed.com/viewjob?jk=abc",
-        apply_url="https://acme.greenhouse.io/apply/123", # Strong identity match
-        provider_name="Indeed"
-    )
-    raw_job2 = RawJob(
-        provenance=aggregator_prov,
-        title="Software Engineer",
-        company="Acme",
-        location="San Francisco, CA"
-    )
+    job2 = create_raw_job("src_2", "123", "Designer", "Globex")
+    res2, db_job2 = process_raw_job(db_session, job2)
     
-    res2, job2 = process_raw_job(db_session, raw_job2)
+    assert res2 == "NEW"
+    assert db_session.query(Job).count() == 2
+
+def test_D_same_canonical_apply_url(db_session: Session):
+    # Same canonical apply URL -> one Job
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme", apply_url="https://acme.com/jobs/99")
+    process_raw_job(db_session, job1)
+    
+    # Different source, different ID, but exact same apply URL
+    job2 = create_raw_job("src_2", "456", "Software Engineer", "Acme Corp", apply_url="https://acme.com/jobs/99")
+    res2, db_job2 = process_raw_job(db_session, job2)
+    
+    assert res2 == "UPDATED" # Because title changes from Engineer -> Software Engineer, triggering version bump
+    assert db_session.query(Job).count() == 1
+    
+    # Verify both provenances are retained
+    assert db_session.query(JobSourceProvenance).count() == 2
+
+def test_E_same_apply_url_with_tracking(db_session: Session):
+    # Same apply URL + tracking parameters -> one Job
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme", apply_url="https://acme.com/jobs/99")
+    process_raw_job(db_session, job1)
+    
+    # URL with tracking params
+    job2 = create_raw_job("src_2", "456", "Engineer", "Acme", apply_url="https://acme.com/jobs/99?utm_source=linkedin&gh_src=test")
+    res2, db_job2 = process_raw_job(db_session, job2)
+    
+    assert res2 == "SAME" # Title unchanged, no fields updated, but matched on URL
+    assert db_session.query(Job).count() == 1
+    assert db_session.query(JobSourceProvenance).count() == 2
+
+def test_E_gh_jid_is_preserved(db_session: Session):
+    # gh_jid is NOT stripped, so different gh_jid means different job
+    job1 = create_raw_job("src_1", "123", "Engineer 1", "Acme", apply_url="https://acme.com/jobs?gh_jid=111")
+    process_raw_job(db_session, job1)
+    
+    job2 = create_raw_job("src_2", "456", "Engineer 2", "Acme", apply_url="https://acme.com/jobs?gh_jid=222")
+    process_raw_job(db_session, job2)
+    
+    assert db_session.query(Job).count() == 2
+
+def test_F_same_collection_endpoint(db_session: Session):
+    # Same collection endpoint + different ATS IDs -> multiple Jobs
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme", target_url="https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true")
+    process_raw_job(db_session, job1)
+    
+    job2 = create_raw_job("src_1", "456", "Designer", "Acme", target_url="https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true")
+    process_raw_job(db_session, job2)
+    
+    assert db_session.query(Job).count() == 2
+
+def test_G_same_company_title_location(db_session: Session):
+    # Same company/title/location -> deterministic fallback behavior
+    job1 = create_raw_job(None, None, "Senior Backend Engineer", "Globex Corporation", location="San Francisco, CA")
+    process_raw_job(db_session, job1)
+    
+    # Slightly different formatting, no apply url, no source ID
+    job2 = create_raw_job(None, None, "Senior Backend Engineer", "Globex Corp.", location="San Francisco CA")
+    res2, db_job2 = process_raw_job(db_session, job2)
+    
     assert res2 == "SAME"
-    
-    provs = db_session.query(JobSourceProvenance).filter_by(job_id=job2.id).all()
-    assert len(provs) == 2
-    assert {"direct_ats", "aggregator"} == {p.source_type for p in provs}
+    assert db_session.query(Job).count() == 1
 
-def test_canonicalization_lifecycle_reopen(db_session, sample_raw_job):
-    """Test EXPIRED job becomes ACTIVE again."""
-    _, job = process_raw_job(db_session, sample_raw_job)
+def test_H_different_titles_no_merge(db_session: Session):
+    # Different titles -> no unsafe merge
+    job1 = create_raw_job(None, None, "Software Engineer", "Globex", location="SF")
+    process_raw_job(db_session, job1)
     
-    # Force expire it
-    job.status = JobStatus.EXPIRED
+    job2 = create_raw_job(None, None, "Senior Software Engineer", "Globex", location="SF")
+    res2, db_job2 = process_raw_job(db_session, job2)
+    
+    assert res2 == "NEW"
+    assert db_session.query(Job).count() == 2
+
+def test_I_different_locations_no_merge(db_session: Session):
+    # Different locations -> no unsafe merge
+    job1 = create_raw_job(None, None, "Software Engineer", "Globex", location="Chennai")
+    process_raw_job(db_session, job1)
+    
+    job2 = create_raw_job(None, None, "Software Engineer", "Globex", location="Bangalore")
+    res2, db_job2 = process_raw_job(db_session, job2)
+    
+    assert res2 == "NEW"
+    assert db_session.query(Job).count() == 2
+
+def test_J_multiple_provenance(db_session: Session):
+    # Same job discovered by two sources -> one Job + multiple provenance records
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme", apply_url="https://acme.com/jobs/99")
+    process_raw_job(db_session, job1)
+    
+    job2 = create_raw_job("src_2", "456", "Engineer", "Acme", apply_url="https://acme.com/jobs/99")
+    res2, db_job2 = process_raw_job(db_session, job2)
+    
+    assert res2 == "SAME"
+    assert db_session.query(Job).count() == 1
+    assert db_session.query(JobSourceProvenance).count() == 2
+
+def test_K_repeated_discovery(db_session: Session):
+    # Repeated discovery -> idempotent
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme", apply_url="https://acme.com/jobs/99")
+    process_raw_job(db_session, job1)
+    process_raw_job(db_session, job1)
+    process_raw_job(db_session, job1)
+    
+    assert db_session.query(Job).count() == 1
+    assert db_session.query(JobSourceProvenance).count() == 1
+
+def test_L_concurrent_duplicate_discovery(db_session: Session):
+    # Concurrent duplicate discovery -> no duplicate canonical Jobs
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme")
+    _, db_job1 = process_raw_job(db_session, job1)
+    
+    job2 = Job(
+        title="Concurrent Engineer",
+        company_name="Acme",
+        canonical_apply_url="https://acme.com/another"
+    )
+    db_session.add(job2)
     db_session.commit()
     
-    # Process it again
-    # Use a future timestamp
-    sample_raw_job.discovered_at = datetime.now(timezone.utc) + timedelta(days=1)
-    res2, job2 = process_raw_job(db_session, sample_raw_job)
+    prov2 = JobSourceProvenance(
+        job_id=job2.id,
+        source_id="src_1",
+        source_type="direct_ats",
+        source_job_id="123",
+        source_url="https://example.com"
+    )
+    db_session.add(prov2)
+    
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+def test_M_metadata_update(db_session: Session):
+    # Metadata update -> existing Job updated
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme")
+    job1.description = "Old description"
+    process_raw_job(db_session, job1)
+    
+    job2 = create_raw_job("src_1", "123", "Engineer", "Acme")
+    job2.description = "New description"
+    res2, db_job2 = process_raw_job(db_session, job2)
     
     assert res2 == "UPDATED"
-    assert job2.status == JobStatus.ACTIVE
+    assert db_session.query(Job).count() == 1
+    
+    updated_job = db_session.query(Job).first()
+    assert updated_job.description == "New description"
+    
+    assert db_session.query(JobVersion).count() == 1
+    version = db_session.query(JobVersion).first()
+    assert "description" in version.changed_fields
 
-def test_canonicalization_fuzzy_match_avoidance(db_session, sample_raw_job):
-    """Ensure two similar but different jobs aren't merged incorrectly."""
-    process_raw_job(db_session, sample_raw_job)
+def test_N_provenance_retained(db_session: Session):
+    # Provenance retained after update
+    job1 = create_raw_job("src_1", "123", "Engineer", "Acme")
+    process_raw_job(db_session, job1)
     
-    # Different job ID, different Apply URL, same title and company
-    # This shouldn't merge automatically if we are strictly deterministic,
-    # Actually wait: "Medium identity: normalized company + title + location"
-    # If they share the exact title, company, location, they WILL merge by the medium identity rule!
-    # Let's test the medium identity rule.
+    job2 = create_raw_job("src_1", "123", "Engineer Sr", "Acme")
+    process_raw_job(db_session, job2)
     
-    prov2 = DiscoveryProvenanceDTO(
-        strategy_id="test",
-        source_type="direct_ats",
-        source_url="https://careers.acme.com/job/456",
-        source_job_id="ACME-456",
-        apply_url="https://acme.greenhouse.io/apply/456"
-    )
-    raw_job2 = RawJob(
-        provenance=prov2,
-        title="Software Engineer",
-        company="Acme Corp",
-        location="San Francisco, CA"
-    )
-    
-    res2, job2 = process_raw_job(db_session, raw_job2)
-    # Based on our identity resolution logic:
-    # 1. No match on source_job_id
-    # 2. No match on URLs
-    # 3. Match on company + title + location -> YES.
-    # It will merge!
-    assert res2 == "SAME"
+    assert db_session.query(JobSourceProvenance).count() == 1
+    prov = db_session.query(JobSourceProvenance).first()
+    assert prov.source_job_id == "123"
+

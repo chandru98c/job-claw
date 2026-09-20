@@ -155,7 +155,7 @@ class SitemapStrategy(DiscoveryStrategy):
         except Exception:
             return False
 
-    def generate_candidates(self, url: str) -> list[StrategyCandidate]:
+    def generate_candidates(self, url: str = None, source: Optional[SourceConfig] = None) -> list[StrategyCandidate]:
         """Generate candidates for standard sitemap locations."""
         try:
             parsed = urllib.parse.urlparse(url)

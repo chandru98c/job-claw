@@ -28,6 +28,7 @@ from app.schemas.discovery import (
     DiscoveryError,
     DiscoveryErrorType,
     CandidateState,
+    SourceConfig,
     MAX_TITLE_LEN,
     MAX_COMPANY_LEN,
     MAX_LOCATION_LEN,
@@ -118,14 +119,20 @@ class GreenhouseAdapter(ATSAdapter):
         """Returns True if the URL matches a known Greenhouse pattern."""
         return self.extract_board_identifier(url) is not None
 
-    def generate_candidates(self, url: str) -> list[StrategyCandidate]:
+    def generate_candidates(self, url: str = None, source: SourceConfig = None) -> list[StrategyCandidate]:
         """
         Generate a candidate for the canonical Greenhouse API endpoint.
-
-        We always construct the known-safe API URL from the extracted board token.
-        We never pass through arbitrary user-supplied Greenhouse paths.
+        Uses explicit source configuration if provided, otherwise infers from URL.
         """
-        board_token = self.extract_board_identifier(url)
+        source_id = None
+        if source and source.identifier:
+            board_token = source.identifier
+            source_id = source.source_id
+        elif url:
+            board_token = self.extract_board_identifier(url)
+        else:
+            return []
+            
         if not board_token:
             return []
 
@@ -138,10 +145,10 @@ class GreenhouseAdapter(ATSAdapter):
                 adapter_id=self.strategy_id,
                 target_url=api_url,
                 evidence=f"Greenhouse board token: {board_token}",
-                confidence=0.95,
-                source="url_pattern_match",
+                confidence=0.95 if url else 1.0,
+                source="url_pattern_match" if url else "source_config",
+                source_id=source_id,
                 priority=self.priority,
-                # state is DISCOVERED — pipeline will validate
             )
         ]
 
@@ -245,8 +252,9 @@ class GreenhouseAdapter(ATSAdapter):
                 if not title:
                     continue  # Skip jobs without titles
 
-                source_job_id = str(job_data.get("id", ""))
+                job_id = str(job_data.get("id", ""))
                 absolute_url = str(job_data.get("absolute_url", ""))[:2048]
+                apply_url = absolute_url or None
 
                 # Location
                 location_data = job_data.get("location", {})
@@ -281,11 +289,12 @@ class GreenhouseAdapter(ATSAdapter):
                     provenance=DiscoveryProvenanceDTO(
                         strategy_id=self.strategy_id,
                         adapter_id=self.strategy_id,
+                        source_id=candidate.source_id,
                         source_type="direct_ats",
                         source_url=candidate.target_url,
-                        source_job_id=source_job_id,
-                        apply_url=absolute_url or None,
-                        provider_name="Greenhouse",
+                        source_job_id=job_id,
+                        apply_url=apply_url,
+                        provider_name=self.ats_name,
                     ),
                     title=title,
                     company=board_token[:MAX_COMPANY_LEN],

@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useTaskStream } from "@/hooks/useTaskStream";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 
 function SavedSearchCard({ 
@@ -50,18 +50,18 @@ function SavedSearchCard({
   const isRunning = taskStream.isActive;
 
   return (
-    <div className="bg-zinc-900 border border-white/5 rounded-xl p-5 flex items-center justify-between group">
+    <div className="bg-card border border-border rounded-[24px] p-5 flex items-center justify-between group">
       <div>
         <h2 className="text-xl font-semibold text-white mb-1">{search.name}</h2>
-        <div className="text-sm text-zinc-400 flex items-center gap-3">
+        <div className="text-sm text-muted-foreground flex items-center gap-3">
           <span>Query: {search.query || "Any"}</span>
           <span>Location: {search.location || "Any"}</span>
           {search.remote && <span className="px-2 py-0.5 bg-zinc-800 rounded text-xs">Remote</span>}
         </div>
-        <div className="text-xs text-zinc-500 mt-2 flex items-center gap-3">
+        <div className="text-xs text-muted-foreground mt-2 flex items-center gap-3">
           <span>Last Run: {search.last_run_at ? new Date(search.last_run_at).toLocaleString() : "Never"}</span>
           {taskId && (
-            <span className={`font-medium ${taskStream.status === 'FAILED' ? 'text-red-400' : taskStream.status === 'SUCCEEDED' ? 'text-green-400' : 'text-purple-400'}`}>
+            <span className={`font-medium ${taskStream.status === 'FAILED' ? 'text-destructive' : taskStream.status === 'SUCCEEDED' ? 'text-primary' : 'text-purple-400'}`}>
               Task: {taskStream.status}
             </span>
           )}
@@ -69,38 +69,42 @@ function SavedSearchCard({
       </div>
 
       <div className="flex items-center gap-3">
-        <button 
+        <Button 
+          variant="ghost" size="icon"
           onClick={() => onToggle(search.id, search.enabled)}
-          className={`p-2 rounded-lg transition-colors ${search.enabled ? "bg-green-500/10 text-green-400 hover:bg-green-500/20" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"}`}
+          className={`rounded-full transition-colors ${search.enabled ? "bg-primary/10 text-primary hover:bg-primary/20" : "bg-card text-muted-foreground hover:bg-card/50"}`}
           title={search.enabled ? "Disable" : "Enable"}
         >
           {search.enabled ? <Power className="w-5 h-5" /> : <PowerOff className="w-5 h-5" />}
-        </button>
+        </Button>
         
-        <button 
+        <Button 
+          variant="ghost" size="icon"
           onClick={() => onEdit(search)}
-          className="p-2 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white rounded-lg transition-colors"
+          className="bg-card text-muted-foreground hover:bg-card/50 hover:text-foreground rounded-full transition-colors"
           title="Edit"
         >
           <Edit className="w-5 h-5" />
-        </button>
+        </Button>
         
-        <button 
+        <Button 
+          variant="ghost" size="icon"
           onClick={handleRun}
           disabled={isRunning || !search.enabled}
-          className="p-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors disabled:opacity-50"
+          className="bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-full transition-colors"
           title="Run Now"
         >
           {isRunning ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
-        </button>
+        </Button>
 
-        <button 
+        <Button 
+          variant="ghost" size="icon"
           onClick={() => onDelete(search.id)}
-          className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg transition-colors"
+          className="bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-full transition-colors"
           title="Delete"
         >
           <Trash2 className="w-5 h-5" />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -184,41 +188,41 @@ export default function SavedSearchesPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 h-full flex flex-col overflow-y-auto">
+    <div className="flex flex-col h-full max-w-6xl mx-auto w-full px-6 py-8 overflow-y-auto">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-          <Database className="w-8 h-8 text-amber-500" />
+          <Database className="w-8 h-8 text-primary" />
           Saved Searches
         </h1>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-black px-4 py-2 rounded-md font-semibold transition-colors">
+          <DialogTrigger className={buttonVariants({ variant: "default" }) + " flex items-center gap-2 rounded-full font-semibold"}>
             <Plus className="w-4 h-4" /> New Search
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md bg-zinc-950 border-zinc-800 text-white">
+          <DialogContent className="sm:max-w-md bg-background border-border text-white">
             <DialogHeader>
               <DialogTitle>Create Saved Search</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col gap-4 py-4">
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-zinc-400">Name *</label>
-                <Input value={newSearch.name} onChange={(e) => setNewSearch({...newSearch, name: e.target.value})} className="bg-zinc-900 border-zinc-800" placeholder="e.g. My Next JS Search" />
+                <label className="text-sm text-muted-foreground">Name *</label>
+                <Input value={newSearch.name} onChange={(e) => setNewSearch({...newSearch, name: e.target.value})} className="bg-card border-border" placeholder="e.g. My Next JS Search" />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-zinc-400">Query (Job Title/Keywords)</label>
-                <Input value={newSearch.query} onChange={(e) => setNewSearch({...newSearch, query: e.target.value})} className="bg-zinc-900 border-zinc-800" placeholder="e.g. Software Engineer" />
+                <label className="text-sm text-muted-foreground">Query (Job Title/Keywords)</label>
+                <Input value={newSearch.query} onChange={(e) => setNewSearch({...newSearch, query: e.target.value})} className="bg-card border-border" placeholder="e.g. Software Engineer" />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-zinc-400">Location</label>
-                <Input value={newSearch.location} onChange={(e) => setNewSearch({...newSearch, location: e.target.value})} className="bg-zinc-900 border-zinc-800" placeholder="e.g. Remote, NY" />
+                <label className="text-sm text-muted-foreground">Location</label>
+                <Input value={newSearch.location} onChange={(e) => setNewSearch({...newSearch, location: e.target.value})} className="bg-card border-border" placeholder="e.g. Remote, NY" />
               </div>
               <div className="flex items-center justify-between pt-2">
-                <label className="text-sm text-zinc-400">Remote Only</label>
+                <label className="text-sm text-muted-foreground">Remote Only</label>
                 <Switch checked={newSearch.remote} onCheckedChange={(checked) => setNewSearch({...newSearch, remote: checked})} />
               </div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button className="bg-amber-500 hover:bg-amber-600 text-black" onClick={handleCreate} disabled={!newSearch.name}>Save</Button>
+              <Button onClick={handleCreate} disabled={!newSearch.name}>Create</Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -226,33 +230,33 @@ export default function SavedSearchesPage() {
       
       {/* Edit Modal */}
       <Dialog open={editOpen} onOpenChange={(open) => { setEditOpen(open); if(!open) setEditingSearch(null); }}>
-        <DialogContent className="sm:max-w-md bg-zinc-950 border-zinc-800 text-white">
+        <DialogContent className="sm:max-w-md bg-background border-border text-white">
           <DialogHeader>
             <DialogTitle>Edit Saved Search</DialogTitle>
           </DialogHeader>
           {editingSearch && (
             <div className="flex flex-col gap-4 py-4">
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-zinc-400">Name *</label>
-                <Input value={editingSearch.name} onChange={(e) => setEditingSearch({...editingSearch, name: e.target.value})} className="bg-zinc-900 border-zinc-800" />
+                <label className="text-sm text-muted-foreground">Name *</label>
+                <Input value={editingSearch.name} onChange={(e) => setEditingSearch({...editingSearch, name: e.target.value})} className="bg-card border-border" />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-zinc-400">Query (Job Title/Keywords)</label>
-                <Input value={editingSearch.query || ""} onChange={(e) => setEditingSearch({...editingSearch, query: e.target.value})} className="bg-zinc-900 border-zinc-800" />
+                <label className="text-sm text-muted-foreground">Query (Job Title/Keywords)</label>
+                <Input value={editingSearch.query || ""} onChange={(e) => setEditingSearch({...editingSearch, query: e.target.value})} className="bg-card border-border" />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-zinc-400">Location</label>
-                <Input value={editingSearch.location || ""} onChange={(e) => setEditingSearch({...editingSearch, location: e.target.value})} className="bg-zinc-900 border-zinc-800" />
+                <label className="text-sm text-muted-foreground">Location</label>
+                <Input value={editingSearch.location || ""} onChange={(e) => setEditingSearch({...editingSearch, location: e.target.value})} className="bg-card border-border" />
               </div>
               <div className="flex items-center justify-between pt-2">
-                <label className="text-sm text-zinc-400">Remote Only</label>
+                <label className="text-sm text-muted-foreground">Remote Only</label>
                 <Switch checked={editingSearch.remote} onCheckedChange={(checked) => setEditingSearch({...editingSearch, remote: checked})} />
               </div>
             </div>
           )}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button className="bg-amber-500 hover:bg-amber-600 text-black" onClick={handleEditSave} disabled={!editingSearch?.name}>Save</Button>
+            <Button onClick={handleEditSave} disabled={!editingSearch?.name}>Save</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -260,15 +264,15 @@ export default function SavedSearchesPage() {
       <div className="grid gap-4">
         {loading ? (
           <div className="flex justify-center py-20">
-            <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
           </div>
         ) : error ? (
-          <div className="text-center py-12 bg-red-500/10 border border-red-500/20 rounded-xl">
-            <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-4" />
-            <p className="text-red-400">{error}</p>
+          <div className="text-center py-12 bg-destructive/10 border border-destructive/20 rounded-[24px]">
+            <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-4" />
+            <p className="text-destructive">{error}</p>
           </div>
         ) : searches.length === 0 ? (
-          <div className="text-center py-12 bg-zinc-900/30 border border-white/5 rounded-xl text-zinc-500">
+          <div className="text-center py-12 bg-card/30 border border-border rounded-[24px] text-muted-foreground">
             No saved searches yet.
           </div>
         ) : (

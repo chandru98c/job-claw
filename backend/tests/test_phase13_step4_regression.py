@@ -67,12 +67,13 @@ def test_canonicalization_identity_regression():
     
     # 1. Exact ATS ID match
     r_job = RawJob(
-        provenance=DiscoveryProvenanceDTO(
-            strategy_id="test",
-            source_type="direct_ats",
-            source_url="https://test.com/jobs",
-            source_job_id="123"
-        ),
+            provenance=DiscoveryProvenanceDTO(
+                strategy_id="test",
+                source_id="mock_source",
+                source_type="direct_ats",
+                source_url="https://test.com/jobs",
+                source_job_id="123"
+            ),
         title="Engineer",
         company="Tech",
         provider_metadata={"ats_id": "123"}

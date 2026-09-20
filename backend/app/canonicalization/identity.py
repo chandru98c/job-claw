@@ -13,32 +13,22 @@ def resolve_identity(db: Session, raw_job: RawJob) -> Optional[Job]:
     """
     
     # 1. Strong Identity: Source Job ID
-    if raw_job.provenance.source_job_id:
+    if raw_job.provenance.source_job_id and raw_job.provenance.source_id:
         existing_prov = db.query(JobSourceProvenance).filter(
             JobSourceProvenance.source_job_id == raw_job.provenance.source_job_id,
-            # We also ensure it's from the same provider type/domain to avoid cross-pollination of generic IDs
-            JobSourceProvenance.source_type == raw_job.provenance.source_type
+            JobSourceProvenance.source_id == raw_job.provenance.source_id
         ).first()
         if existing_prov and existing_prov.job:
             return existing_prov.job
             
-    # 2. Strong Identity: Apply URL or Source URL
+    # 2. Strong Identity: Apply URL
     norm_apply_url = normalize_url(raw_job.provenance.apply_url) if raw_job.provenance.apply_url else None
-    norm_source_url = normalize_url(raw_job.provenance.source_url) if raw_job.provenance.source_url else None
     
-    urls_to_check = [u for u in [norm_apply_url, norm_source_url] if u]
-    if urls_to_check:
+    if norm_apply_url:
         # Check against Job.canonical_apply_url
-        match = db.query(Job).filter(Job.canonical_apply_url.in_(urls_to_check)).first()
+        match = db.query(Job).filter(Job.canonical_apply_url == norm_apply_url).first()
         if match:
             return match
-            
-        # Check against JobSourceProvenance.source_url
-        prov_match = db.query(JobSourceProvenance).filter(
-            JobSourceProvenance.source_url.in_(urls_to_check)
-        ).first()
-        if prov_match and prov_match.job:
-            return prov_match.job
 
     # 3. Medium Identity: Normalized Core Fields (Company + Title + Location)
     norm_title = normalize_title(raw_job.title)
@@ -64,7 +54,13 @@ def resolve_identity(db: Session, raw_job: RawJob) -> Optional[Job]:
         # If we have exactly one match, we are confident.
         # If there are multiple matches, we skip deterministic matching to avoid merging wrong jobs (could be multiple requisitions for same title/company)
         if len(matches) == 1:
-            return matches[0]
+            match = matches[0]
+            # Ensure we don't merge two explicitly distinct jobs from the same source (e.g. two open requisitions for "Engineer" at Acme)
+            if raw_job.provenance.source_id and raw_job.provenance.source_job_id:
+                for prov in match.provenances:
+                    if prov.source_id == raw_job.provenance.source_id and prov.source_job_id != raw_job.provenance.source_job_id:
+                        return None
+            return match
 
     # Fuzzy identity (Step 6) is skipped for now per requirements (deterministic only, preserve ambiguity)
     return None

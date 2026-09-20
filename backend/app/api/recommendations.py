@@ -94,8 +94,9 @@ async def recommendation_action(
     await db.commit()
     await db.refresh(rec)
 
-    if task_id and application_id and hasattr(request.app.state, "redis"):
-        await request.app.state.redis.enqueue_job("prepare_application_task", task_id, application_id, _job_id=task_id)
+    redis = getattr(request.app.state, "redis", None)
+    if task_id and application_id and redis is not None:
+        await redis.enqueue_job("prepare_application_task", task_id, application_id, _job_id=task_id)
     
     # Construct response dictionary
     response_data = JobRecommendationResponse.model_validate(rec).model_dump()

@@ -17,6 +17,7 @@ import { useAppState } from "@/components/providers";
 type ProfileInfo = {
   id: string;
   name: string;
+  is_active?: boolean;
 };
 
 export function ProfileSwitcher({ onEditActiveProfile }: { onEditActiveProfile: () => void }) {
@@ -25,8 +26,6 @@ export function ProfileSwitcher({ onEditActiveProfile }: { onEditActiveProfile: 
   const [activeId, setActiveId] = useState<string | null>(null);
   
   useEffect(() => {
-    const currentId = localStorage.getItem("active_profile_id");
-    setActiveId(currentId);
     fetchProfiles();
   }, []);
   
@@ -35,24 +34,32 @@ export function ProfileSwitcher({ onEditActiveProfile }: { onEditActiveProfile: 
       const data = await api.get<ProfileInfo[]>("/profiles");
       setProfiles(data);
       
-      const currentId = localStorage.getItem("active_profile_id");
-      if (currentId) {
-        const active = data.find(p => p.id === currentId);
-        if (active) setProfileName(active.name);
+      const active = data.find(p => p.is_active);
+      if (active) {
+        setActiveId(active.id);
+        setProfileName(active.name);
       } else if (data.length > 0) {
-        // Auto-select first if none selected
+        // Fallback: If no profile is active but profiles exist, activate the first one
         handleSwitch(data[0].id, data[0].name);
+      } else {
+        setActiveId(null);
+        setProfileName("");
       }
     } catch (e) {
       console.error("Failed to load profiles", e);
     }
   };
 
-  const handleSwitch = (id: string, name: string) => {
-    localStorage.setItem("active_profile_id", id);
-    setActiveId(id);
-    setProfileName(name);
-    window.dispatchEvent(new Event('profileUpdated'));
+  const handleSwitch = async (id: string, name: string) => {
+    try {
+      await api.post(`/profiles/${id}/activate`, {});
+      setActiveId(id);
+      setProfileName(name);
+      window.dispatchEvent(new Event('profileUpdated'));
+      fetchProfiles(); // Refresh the list to ensure is_active flags are fully synced
+    } catch (e) {
+      console.error("Failed to activate profile", e);
+    }
   };
 
   const handleCreate = async () => {
@@ -60,28 +67,26 @@ export function ProfileSwitcher({ onEditActiveProfile }: { onEditActiveProfile: 
     if (!name) return;
     
     try {
-      const newProfile = await api.post<ProfileInfo>("/profiles", { name });
-      setProfiles([...profiles, newProfile]);
-      handleSwitch(newProfile.id, newProfile.name);
-      // Let them edit it right away
+      const newProfile = await api.post<{id: string, name: string, is_active?: boolean}>("/profiles", { name });
+      await handleSwitch(newProfile.id, newProfile.name);
       setTimeout(() => onEditActiveProfile(), 100);
     } catch (e) {
-      alert("Failed to create profile");
+      console.error("Failed to create profile", e);
     }
   };
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors focus:outline-none focus:ring-1 focus:ring-green-500/50">
-        <UserCircle className="w-5 h-5 text-zinc-400" />
-        <span className="text-sm font-medium text-zinc-300 hidden sm:block max-w-[120px] truncate">
+      <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1.5 rounded-full hover:bg-white/5 transition-colors focus:outline-none focus:ring-1 focus:ring-primary/50">
+        <UserCircle className="w-5 h-5 text-muted-foreground" />
+        <span className="text-sm font-medium text-muted-foreground hidden sm:block max-w-[120px] truncate">
           {profileName || "Select Profile"}
         </span>
       </DropdownMenuTrigger>
       
-      <DropdownMenuContent align="end" className="w-56 bg-zinc-950 border-zinc-800 text-white">
+      <DropdownMenuContent align="end" className="w-56 bg-background border-border text-white">
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-zinc-400">Switch Profile</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-muted-foreground">Switch Profile</DropdownMenuLabel>
           
           {profiles.map(p => (
             <DropdownMenuItem 
@@ -90,7 +95,7 @@ export function ProfileSwitcher({ onEditActiveProfile }: { onEditActiveProfile: 
               className="flex items-center justify-between cursor-pointer hover:bg-zinc-800"
             >
               <span className="truncate">{p.name}</span>
-              {activeId === p.id && <Check className="w-4 h-4 text-green-500 shrink-0" />}
+              {activeId === p.id && <Check className="w-4 h-4 text-primary shrink-0" />}
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
@@ -98,7 +103,7 @@ export function ProfileSwitcher({ onEditActiveProfile }: { onEditActiveProfile: 
         <DropdownMenuSeparator className="bg-zinc-800" />
         
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={handleCreate} className="cursor-pointer text-green-400 focus:text-green-300 hover:bg-zinc-800">
+          <DropdownMenuItem onClick={handleCreate} className="cursor-pointer text-primary focus:text-primary hover:bg-zinc-800">
             <Plus className="w-4 h-4 mr-2" />
             Create Profile
           </DropdownMenuItem>

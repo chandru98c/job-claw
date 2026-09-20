@@ -28,9 +28,15 @@ def extract_domain(url: str) -> str:
 
 async def run_seed():
     async with AsyncSessionLocal() as db:
-        # Delete existing data (as requested to clear testing data)
-        await db.execute(text("TRUNCATE TABLE sources CASCADE;"))
-        await db.commit()
+        # Do not truncate to preserve jobs!
+        # await db.execute(text("TRUNCATE TABLE sources CASCADE;"))
+        # await db.commit()
+        
+        # We'll use a dictionary to keep track of new sources, but we need to use ON CONFLICT DO NOTHING.
+        # But SQLAlchemy add_all will throw an integrity error if domain exists.
+        # Let's fetch existing domains to avoid inserting duplicates.
+        existing = await db.execute(text("SELECT domain FROM sources"))
+        existing_domains = {row[0] for row in existing}
         
         sources = {}
 
@@ -48,12 +54,13 @@ async def run_seed():
                             url = parts[2]
                             if url.startswith('http'):
                                 domain = extract_domain(url)
-                                sources[domain] = Source(
-                                    id=str(uuid.uuid4()),
-                                    domain=domain,
-                                    start_url=url,
-                                    is_active=True
-                                )
+                                if domain not in existing_domains:
+                                    sources[domain] = Source(
+                                        id=str(uuid.uuid4()),
+                                        domain=domain,
+                                        start_url=url,
+                                        is_active=True
+                                    )
 
         # 2. Parse WordPress json
         wp_path = r"d:\in test tools\job-claw\scaper\apps\backend\data\targets\wordpress_target_sites.seed.json"
@@ -64,13 +71,14 @@ async def run_seed():
                     url = item.get("homepage_url")
                     if url:
                         domain = extract_domain(url)
-                        sources[domain] = Source(
-                            id=str(uuid.uuid4()),
-                            domain=domain,
-                            start_url=url,
-                            ats_type="WordPress",
-                            is_active=True
-                        )
+                        if domain not in existing_domains:
+                            sources[domain] = Source(
+                                id=str(uuid.uuid4()),
+                                domain=domain,
+                                start_url=url,
+                                ats_type="WordPress",
+                                is_active=True
+                            )
 
         # 3. Parse Workable json
         wa_path = r"d:\in test tools\job-claw\scaper\apps\ever-jobs\scripts\seeds\workable-candidates.json"
@@ -81,14 +89,15 @@ async def run_seed():
                     slug = item.get("companySlug")
                     if slug:
                         domain = f"{slug}.workable.com"
-                        start_url = f"https://apply.workable.com/{slug}/"
-                        sources[domain] = Source(
-                            id=str(uuid.uuid4()),
-                            domain=domain,
-                            start_url=start_url,
-                            ats_type="workable",
-                            is_active=True
-                        )
+                        if domain not in existing_domains:
+                            start_url = f"https://apply.workable.com/{slug}/"
+                            sources[domain] = Source(
+                                id=str(uuid.uuid4()),
+                                domain=domain,
+                                start_url=start_url,
+                                ats_type="workable",
+                                is_active=True
+                            )
 
         # Insert all
         db.add_all(sources.values())

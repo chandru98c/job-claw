@@ -77,7 +77,7 @@ class CareerPageStrategy(DiscoveryStrategy):
         except Exception:
             return False
 
-    def generate_candidates(self, url: str) -> list[StrategyCandidate]:
+    def generate_candidates(self, url: str = None, source: Optional[SourceConfig] = None) -> list[StrategyCandidate]:
         """
         Generate career page candidates from the input URL's origin.
         Produces at most len(CAREER_PATHS) candidates.

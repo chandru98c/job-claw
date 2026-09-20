@@ -14,10 +14,8 @@ export class ApiError extends Error {
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
   
-  const activeProfileId = typeof window !== 'undefined' ? localStorage.getItem('active_profile_id') : null;
   const headers = {
     "Content-Type": "application/json",
-    ...(activeProfileId ? { "X-Profile-ID": activeProfileId } : {}),
     ...options.headers,
   };
 

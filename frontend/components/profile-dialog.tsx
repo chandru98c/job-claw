@@ -27,13 +27,13 @@ function ArrayInput({ label, value, onChange, placeholder }: { label: string, va
 
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-sm text-zinc-400">{label}</label>
+      <label className="text-sm text-muted-foreground">{label}</label>
       <div className="flex gap-2">
         <Input 
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          className="bg-zinc-900 border-zinc-800"
+          className="bg-card border-border"
           placeholder={placeholder}
         />
         <Button type="button" onClick={handleAdd} variant="secondary" size="icon" className="shrink-0"><Plus className="w-4 h-4" /></Button>
@@ -41,9 +41,9 @@ function ArrayInput({ label, value, onChange, placeholder }: { label: string, va
       {value.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
           {value.map(item => (
-            <div key={item} className="flex items-center gap-1 bg-zinc-800 px-2 py-1 rounded-md text-sm">
+            <div key={item} className="flex items-center gap-1 bg-zinc-800 px-2 py-1 rounded-full text-sm">
               <span>{item}</span>
-              <button type="button" onClick={() => handleRemove(item)} className="text-zinc-400 hover:text-white">
+              <button type="button" onClick={() => handleRemove(item)} className="text-muted-foreground hover:text-white">
                 <X className="w-3 h-3" />
               </button>
             </div>
@@ -130,14 +130,9 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
     const formDataObj = new FormData();
     formDataObj.append("file", file);
     
-    const activeProfileId = typeof window !== 'undefined' ? localStorage.getItem('active_profile_id') : null;
-    
     try {
       const res = await fetch(`${api.baseUrl}/profiles/me/resume`, {
         method: "POST",
-        headers: {
-          ...(activeProfileId ? { "X-Profile-ID": activeProfileId } : {})
-        },
         body: formDataObj
       });
       if (!res.ok) throw new Error("Failed to upload resume");
@@ -154,59 +149,59 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl bg-zinc-950 border-zinc-800 text-white max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl bg-background border-border text-white max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Profile & Settings</DialogTitle>
         </DialogHeader>
         
-        {error && <div className="p-3 bg-red-900/50 border border-red-500/50 text-red-200 rounded-md text-sm">{error}</div>}
-        {success && <div className="p-3 bg-emerald-900/50 border border-emerald-500/50 text-emerald-200 rounded-md text-sm">Profile saved successfully!</div>}
+        {error && <div className="p-3 bg-destructive/50 border border-destructive/50 text-destructive rounded-full text-sm">{error}</div>}
+        {success && <div className="p-3 bg-emerald-900/50 border border-emerald-500/50 text-emerald-200 rounded-full text-sm">Profile saved successfully!</div>}
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Basic Info</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Basic Info</h3>
             
             <div className="flex flex-col gap-2">
-              <label className="text-sm text-zinc-400">Full Name *</label>
-              <Input value={formData.name} onChange={(e) => handleChange("name", e.target.value)} className="bg-zinc-900 border-zinc-800" />
+              <label className="text-sm text-muted-foreground">Full Name *</label>
+              <Input value={formData.name} onChange={(e) => handleChange("name", e.target.value)} className="bg-card border-border" />
             </div>
             
             <div className="flex flex-col gap-2">
-              <label className="text-sm text-zinc-400">Email</label>
-              <Input value={formData.email} onChange={(e) => handleChange("email", e.target.value)} className="bg-zinc-900 border-zinc-800" type="email" />
+              <label className="text-sm text-muted-foreground">Email</label>
+              <Input value={formData.email} onChange={(e) => handleChange("email", e.target.value)} className="bg-card border-border" type="email" />
             </div>
             
             <div className="flex flex-col gap-2">
-              <label className="text-sm text-zinc-400">Phone</label>
-              <Input value={formData.phone} onChange={(e) => handleChange("phone", e.target.value)} className="bg-zinc-900 border-zinc-800" type="tel" />
+              <label className="text-sm text-muted-foreground">Phone</label>
+              <Input value={formData.phone} onChange={(e) => handleChange("phone", e.target.value)} className="bg-card border-border" type="tel" />
             </div>
             
             <div className="flex flex-col gap-2">
-              <label className="text-sm text-zinc-400">Location</label>
-              <Input value={formData.location} onChange={(e) => handleChange("location", e.target.value)} className="bg-zinc-900 border-zinc-800" />
+              <label className="text-sm text-muted-foreground">Location</label>
+              <Input value={formData.location} onChange={(e) => handleChange("location", e.target.value)} className="bg-card border-border" />
             </div>
           </div>
           
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Professional</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Professional</h3>
             
             <div className="flex flex-col gap-2">
-              <label className="text-sm text-zinc-400">Tagline / Title</label>
-              <Input value={formData.tagline} onChange={(e) => handleChange("tagline", e.target.value)} className="bg-zinc-900 border-zinc-800" placeholder="e.g. Senior Software Engineer" />
+              <label className="text-sm text-muted-foreground">Tagline / Title</label>
+              <Input value={formData.tagline} onChange={(e) => handleChange("tagline", e.target.value)} className="bg-card border-border" placeholder="e.g. Senior Software Engineer" />
             </div>
             
             <div className="flex flex-col gap-2">
-              <label className="text-sm text-zinc-400">About (Bio)</label>
-              <Textarea value={formData.about} onChange={(e) => handleChange("about", e.target.value)} className="bg-zinc-900 border-zinc-800 min-h-[120px]" />
+              <label className="text-sm text-muted-foreground">About (Bio)</label>
+              <Textarea value={formData.about} onChange={(e) => handleChange("about", e.target.value)} className="bg-card border-border min-h-[120px]" />
             </div>
             
             <div className="flex flex-col gap-2 pt-2">
-              <label className="text-sm text-zinc-400 flex items-center justify-between">
+              <label className="text-sm text-muted-foreground flex items-center justify-between">
                 Resume (PDF)
                 {formData.resume_path && <span className="text-xs text-emerald-400">Uploaded</span>}
               </label>
               <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" className="w-full bg-zinc-900 border-zinc-800 hover:bg-zinc-800" onClick={() => fileInputRef.current?.click()} disabled={loading}>
+                <Button type="button" variant="outline" className="w-full bg-card border-border hover:bg-zinc-800" onClick={() => fileInputRef.current?.click()} disabled={loading}>
                   <Upload className="w-4 h-4 mr-2" />
                   {formData.resume_path ? "Replace Resume" : "Upload Resume"}
                 </Button>
@@ -215,8 +210,8 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
             </div>
           </div>
           
-          <div className="col-span-1 md:col-span-2 space-y-4 pt-4 border-t border-zinc-800">
-            <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Matching Preferences</h3>
+          <div className="col-span-1 md:col-span-2 space-y-4 pt-4 border-t border-border">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Matching Preferences</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <ArrayInput 
@@ -247,7 +242,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
           </div>
         </div>
         
-        <div className="flex justify-end gap-2 pt-4 border-t border-zinc-800 mt-2">
+        <div className="flex justify-end gap-2 pt-4 border-t border-border mt-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>Close</Button>
           <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSave} disabled={loading}>
             {loading ? "Saving..." : "Save Profile"}

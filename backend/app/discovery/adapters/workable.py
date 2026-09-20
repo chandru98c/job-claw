@@ -13,14 +13,15 @@ from app.schemas.discovery import (
     DiscoveryProvenanceDTO,
     DiscoveryError,
     DiscoveryErrorType,
+    SourceConfig,
 )
 from app.core.http import SafeHTTPClient
 
 logger = logging.getLogger(__name__)
 
-# Pattern: apply.workable.com/{token}
+# Pattern: apply.workable.com/{token} or apply.workable.com/api/v3/accounts/{token}/jobs
 _WORKABLE_BOARD_PATTERN = re.compile(
-    r"^https?://(?:apply\.)?workable\.com/([a-zA-Z0-9_-]+)(?:/.*)?$",
+    r"^https?://(?:apply\.)?workable\.com/(?:api/v3/accounts/)?([a-zA-Z0-9_-]+)(?:/.*)?$",
     re.IGNORECASE,
 )
 
@@ -52,13 +53,20 @@ class WorkableAdapter(ATSAdapter):
     def recognizes_url(self, url: str) -> bool:
         return self.extract_board_identifier(url) is not None
 
-    def generate_candidates(self, url: str) -> list[StrategyCandidate]:
-        board_token = self.extract_board_identifier(url)
+    def generate_candidates(self, url: str = None, source: SourceConfig = None) -> list[StrategyCandidate]:
+        source_id = None
+        if source and source.identifier:
+            board_token = source.identifier
+            source_id = source.source_id
+        elif url:
+            board_token = self.extract_board_identifier(url)
+        else:
+            return []
+            
         if not board_token:
             return []
 
         # Construct the API URL for Workable
-        # Workable public API for career pages:
         api_url = f"https://apply.workable.com/api/v3/accounts/{board_token}/jobs"
 
         return [
@@ -67,8 +75,9 @@ class WorkableAdapter(ATSAdapter):
                 adapter_id=self.strategy_id,
                 target_url=api_url,
                 evidence=f"Workable board token: {board_token}",
-                confidence=0.95,
-                source="url_pattern_match",
+                confidence=0.95 if url else 1.0,
+                source="url_pattern_match" if url else "source_config",
+                source_id=source_id,
                 priority=self.priority,
             )
         ]
@@ -87,7 +96,9 @@ class WorkableAdapter(ATSAdapter):
 
         try:
             url = candidate.validated_url or candidate.target_url
-            response_data = await http_client.get(url)
+            payload = json.dumps({"query": "", "location": [], "department": [], "worktype": [], "remote": []})
+            headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            response_data = await http_client.request("POST", url, content=payload, headers=headers)
             result.requests_attempted = 1
             
             try:
@@ -105,7 +116,10 @@ class WorkableAdapter(ATSAdapter):
             result.requests_attempted = 1
             
             error_type = DiscoveryErrorType.NETWORK_FAILURE
-            if "browser fallback" in str(e).lower() or "403" in str(e) or "404" in str(e):
+            if "429" in str(e):
+                error_type = DiscoveryErrorType.STRATEGY_UNAVAILABLE
+                # Step 14 will intercept this specific error to flip the circuit breaker
+            elif "browser fallback" in str(e).lower() or "403" in str(e) or "404" in str(e):
                 error_type = DiscoveryErrorType.REQUIRES_BROWSER_FALLBACK
             elif "parse" in str(e).lower() or "json" in str(e).lower():
                 error_type = DiscoveryErrorType.PARSING_FAILURE
@@ -146,24 +160,45 @@ class WorkableAdapter(ATSAdapter):
 
                 location_obj = j.get("location", {})
                 location = location_obj.get("city", "") or location_obj.get("country", "")
+                
+                shortcode = j.get("shortcode")
+                job_id = str(j.get("id") or shortcode or "")
+                
+                if not shortcode or not job_id:
+                    continue
 
-                apply_url = f"https://apply.workable.com/{board_id}/j/{j.get('shortcode')}"
+                apply_url = f"https://apply.workable.com/{board_id}/j/{shortcode}"
+                description = j.get("description", "") or j.get("descriptionHtml", "")
+                employment_type = j.get("type", "")
+                
+                remote_status = "Remote" if j.get("telecommuting") else None
+                
+                provider_metadata = {
+                    "department": j.get("department", []),
+                    "salary": j.get("salary", {}),
+                    "worktype": j.get("worktype", ""),
+                    "experience": j.get("experience", "")
+                }
 
                 raw_jobs.append(
                     RawJob(
                         provenance=DiscoveryProvenanceDTO(
                             strategy_id=self.strategy_id,
                             adapter_id=self.strategy_id,
+                            source_id=candidate.source_id,
                             source_type="direct_ats",
                             source_url=candidate.target_url,
-                            source_job_id=str(j.get("id", "") or j.get("shortcode", "")),
+                            source_job_id=job_id,
                             apply_url=apply_url,
                             provider_name=self.ats_name,
                         ),
                         title=title[:255],
-                        company=board_id,
+                        company=board_id[:255],
                         location=location[:255] if location else None,
-                        description=None,
+                        description=description[:50000] if description else None,
+                        employment_type=employment_type[:128] if employment_type else None,
+                        remote_status=remote_status[:64] if remote_status else None,
+                        provider_metadata=provider_metadata
                     )
                 )
             return raw_jobs

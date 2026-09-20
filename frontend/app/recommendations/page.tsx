@@ -5,6 +5,7 @@ import { Activity, X, Bookmark, Send, Loader2, AlertCircle } from "lucide-react"
 import { api } from "@/lib/api";
 import { useTaskStream } from "@/hooks/useTaskStream";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
 function RecommendationCard({ 
   rec, 
@@ -41,18 +42,18 @@ function RecommendationCard({
   };
 
   return (
-    <div className="bg-zinc-900 border border-white/5 rounded-xl p-5 flex items-center justify-between">
+    <div className="bg-card border border-border rounded-[24px] p-5 flex items-center justify-between">
       <div>
         <div className="flex items-center gap-3 mb-1">
-          <span className="text-2xl font-bold text-green-400">{rec.score}%</span>
-          <span className="text-xs px-2 py-0.5 bg-zinc-800 text-zinc-300 rounded">{rec.state}</span>
+          <span className="text-2xl font-bold text-primary">{rec.score}%</span>
+          <span className="text-xs px-2 py-0.5 bg-zinc-800 text-muted-foreground rounded">{rec.state}</span>
         </div>
-        <div className="text-sm text-zinc-400">Job ID: {rec.job_id}</div>
+        <div className="text-sm text-muted-foreground">Job ID: {rec.job_id}</div>
         
         {rec.reasons && rec.reasons.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {rec.reasons.map((r: string, i: number) => (
-              <span key={i} className="text-xs bg-zinc-800/50 text-zinc-500 px-2 py-1 rounded">
+              <span key={i} className="text-xs bg-zinc-800/50 text-muted-foreground px-2 py-1 rounded">
                 {r}
               </span>
             ))}
@@ -61,28 +62,30 @@ function RecommendationCard({
       </div>
 
       <div className="flex flex-col gap-2">
-        <button 
+        <Button 
           onClick={handlePrepare}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-md text-sm font-semibold transition-colors disabled:opacity-50"
           disabled={rec.state === "APPLIED" || preparing}
+          className="rounded-full gap-2"
         >
           {preparing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           {preparing ? "Preparing..." : "Prepare Application"}
-        </button>
+        </Button>
 
         <div className="flex gap-2">
-          <button 
+          <Button 
+            variant="outline"
             onClick={() => onSave(rec.id)}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md text-sm transition-colors"
+            className="flex-1 rounded-full gap-2"
           >
             <Bookmark className="w-4 h-4" /> Save
-          </button>
-          <button 
+          </Button>
+          <Button 
+            variant="outline"
             onClick={() => onDismiss(rec.id)}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-red-500/20 hover:text-red-400 text-zinc-400 rounded-md text-sm transition-colors"
+            className="flex-1 rounded-full gap-2 hover:bg-destructive/20 hover:text-destructive hover:border-destructive/30"
           >
             <X className="w-4 h-4" /> Dismiss
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -125,10 +128,10 @@ export default function RecommendationsPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 h-full flex flex-col overflow-y-auto">
+    <div className="flex flex-col h-full max-w-6xl mx-auto w-full px-6 py-8 overflow-y-auto">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-          <Activity className="w-8 h-8 text-pink-500" />
+          <Activity className="w-8 h-8 text-primary" />
           Job Recommendations
         </h1>
       </div>
@@ -136,15 +139,15 @@ export default function RecommendationsPage() {
       <div className="grid gap-4">
         {loading ? (
           <div className="flex justify-center py-20">
-            <Loader2 className="w-8 h-8 text-pink-500 animate-spin" />
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
           </div>
         ) : error ? (
-          <div className="text-center py-12 bg-red-500/10 border border-red-500/20 rounded-xl">
-            <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-4" />
-            <p className="text-red-400">{error}</p>
+          <div className="text-center py-12 bg-destructive/10 border border-destructive/20 rounded-[24px]">
+            <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-4" />
+            <p className="text-destructive">{error}</p>
           </div>
         ) : recs.length === 0 ? (
-          <div className="text-center py-12 bg-zinc-900/30 border border-white/5 rounded-xl text-zinc-500">
+          <div className="text-center py-12 bg-card/30 border border-border rounded-[24px] text-muted-foreground">
             No recommendations yet. Create a saved search to get started.
           </div>
         ) : (

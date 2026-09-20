@@ -19,18 +19,38 @@ class ProfileCreate(BaseModel):
 @router.get("")
 @router.get("/")
 async def list_profiles(db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(Profile))
+    res = await db.execute(select(Profile).order_by(Profile.created_at.desc()))
     profiles = res.scalars().all()
-    return [{"id": p.id, "name": p.name} for p in profiles]
+    return [{"id": p.id, "name": p.name, "is_active": p.is_active} for p in profiles]
 
 @router.post("")
 @router.post("/")
 async def create_profile(data: ProfileCreate, db: AsyncSession = Depends(get_db)):
+    # Check if this is the first profile
+    res = await db.execute(select(Profile).limit(1))
+    is_first = res.first() is None
+
     new_id = str(uuid.uuid4())
-    profile = Profile(id=new_id, name=data.name)
+    profile = Profile(id=new_id, name=data.name, is_active=is_first)
     db.add(profile)
     await db.commit()
-    return {"id": profile.id, "name": profile.name}
+    return {"id": profile.id, "name": profile.name, "is_active": profile.is_active}
+
+@router.post("/{profile_id}/activate")
+async def activate_profile(profile_id: str, db: AsyncSession = Depends(get_db)):
+    # Deactivate all profiles
+    from sqlalchemy import update
+    await db.execute(update(Profile).values(is_active=False))
+    
+    # Activate the target profile
+    target = await db.get(Profile, profile_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Profile not found")
+        
+    target.is_active = True
+    await db.commit()
+    
+    return {"id": target.id, "name": target.name, "is_active": True}
 
 class ProfileUpdate(BaseModel):
     name: str

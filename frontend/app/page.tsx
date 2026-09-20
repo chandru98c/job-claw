@@ -5,6 +5,14 @@ import { JobCard } from "@/components/jobs/job-card";
 import { Sparkles, SlidersHorizontal, ArrowDownWideNarrow, Search, MapPin, Loader2, AlertCircle } from "lucide-react";
 import { useSearchMode, useAppState } from "@/components/providers";
 import { api } from "@/lib/api";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type JobResponse = {
   id: string;
@@ -30,6 +38,7 @@ export default function Home() {
   const [q, setQ] = useState("");
   const [location, setLocation] = useState("");
   const [remote, setRemote] = useState(false);
+  const [sortMode, setSortMode] = useState<"recent" | "score">(isOpenSearch ? "recent" : "score");
 
   const fetchJobs = async () => {
     setLoading(true);
@@ -73,95 +82,116 @@ export default function Home() {
     }
   };
 
+  const sortedJobs = [...jobs].sort((a, b) => {
+    if (sortMode === 'score') {
+      return (b.matchScore || 0) - (a.matchScore || 0);
+    }
+    return 0;
+  });
+
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full flex flex-col">
+    <div className="flex flex-col h-full max-w-6xl mx-auto w-full px-6 py-8 overflow-y-auto">
       {/* Header Area */}
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         {isOpenSearch ? (
           <div className="w-full">
             <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2 mb-4">
-              <Search className="w-6 h-6 text-green-400" />
+              <Search className="w-6 h-6 text-primary" />
               Open Search
             </h1>
             <div className="flex flex-col md:flex-row gap-3">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <input 
                   type="text" 
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Job title, keywords, or company (Press Enter to search)" 
-                  className="w-full bg-black/40 border border-white/10 rounded-md pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-green-500/50"
+                  className="w-full bg-card/40 border border-white/10 rounded-full pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
                 />
               </div>
               <div className="relative flex-1">
-                <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+                <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <input 
                   type="text" 
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="City, state, or zip code (Press Enter to search)" 
-                  className="w-full bg-black/40 border border-white/10 rounded-md pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-green-500/50"
+                  className="w-full bg-card/40 border border-white/10 rounded-full pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
                 />
               </div>
-              <div className="flex items-center gap-2 px-3 border border-white/10 rounded-md bg-black/40 h-9">
-                <input 
-                  type="checkbox" 
-                  id="remote" 
-                  checked={remote}
-                  onChange={(e) => {
-                    setRemote(e.target.checked);
-                    // Slight hack to fetch immediately on checkbox
-                    setTimeout(fetchJobs, 50);
-                  }}
-                  className="rounded bg-zinc-900 border-white/10 text-green-500 focus:ring-green-500 focus:ring-offset-black" 
-                />
-                <label htmlFor="remote" className="text-sm text-zinc-300 whitespace-nowrap">Remote Only</label>
-              </div>
+              <div className="flex-1" />
             </div>
           </div>
         ) : (
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2 mb-2">
-              <Sparkles className="w-6 h-6 text-green-400" />
+              <Sparkles className="w-6 h-6 text-primary" />
               Discover
             </h1>
-            <p className="text-zinc-400">Curated opportunities matching your active profile.</p>
+            <p className="text-muted-foreground">Curated opportunities matching your active profile.</p>
           </div>
         )}
         
         <div className="flex items-center gap-3 shrink-0">
-          <button className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-300 bg-zinc-900 border border-white/10 rounded-md hover:bg-white/5 transition-colors h-9">
-            <SlidersHorizontal className="w-4 h-4" />
-            Filters
-          </button>
-          <button className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-300 bg-zinc-900 border border-white/10 rounded-md hover:bg-white/5 transition-colors h-9">
-            <ArrowDownWideNarrow className="w-4 h-4" />
-            Sort: {isOpenSearch ? 'Recent' : 'Match Score'}
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger className={buttonVariants({ variant: "outline", size: "sm" }) + " h-9 gap-2 cursor-pointer"}>
+              <SlidersHorizontal className="w-4 h-4" />
+              Filters
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 bg-card border-border backdrop-blur-xl">
+              <DropdownMenuCheckboxItem
+                checked={remote}
+                onCheckedChange={(checked) => {
+                  setRemote(checked);
+                  setTimeout(fetchJobs, 50);
+                }}
+                className="cursor-pointer"
+              >
+                Remote Only
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger className={buttonVariants({ variant: "outline", size: "sm" }) + " h-9 gap-2 cursor-pointer"}>
+              <ArrowDownWideNarrow className="w-4 h-4" />
+              Sort: {sortMode === 'recent' ? 'Recent' : 'Match Score'}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 bg-card border-border backdrop-blur-xl">
+              <DropdownMenuItem className="cursor-pointer" onClick={() => setSortMode('recent')}>
+                Most Recent
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => setSortMode('score')}>
+                Highest Match Score
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
       {/* Job Feed */}
-      <div className="flex-1 overflow-y-auto pr-2 pb-8 space-y-4">
+      <div className="flex-1 pr-2 pb-8 space-y-4">
         {loading ? (
           <div className="flex justify-center items-center py-20">
-            <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
           </div>
         ) : error ? (
-          <div className="text-center py-20 bg-red-500/10 rounded-xl border border-red-500/20">
-            <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-4" />
-            <p className="text-red-400 font-medium">{error}</p>
-            <button onClick={fetchJobs} className="mt-4 px-4 py-2 bg-red-500/20 text-red-400 rounded-md hover:bg-red-500/30 transition-colors">Try Again</button>
+          <div className="text-center py-20 bg-destructive/10 rounded-[24px] border border-destructive/20">
+            <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-4" />
+            <p className="text-destructive font-medium">{error}</p>
+            <Button variant="outline" onClick={fetchJobs} className="mt-4 text-destructive border-destructive/20 hover:bg-destructive/10">Try Again</Button>
           </div>
-        ) : jobs.length === 0 ? (
-          <div className="text-center py-20 bg-zinc-900/30 rounded-xl border border-zinc-800/50">
-            <p className="text-zinc-400">No matching jobs found. Try adjusting your profile keywords or run the scraper.</p>
+        ) : sortedJobs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Search className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-xl font-medium text-white mb-2">No jobs found</h3>
+            <p className="text-muted-foreground max-w-md">Try adjusting your filters or search terms.</p>
           </div>
         ) : (
-          jobs.map(job => (
+          sortedJobs.map(job => (
             <JobCard 
               key={job.id}
               title={job.title}
@@ -188,7 +218,7 @@ export default function Home() {
 
         {!loading && jobs.length > 0 && (
           <div className="py-8 text-center">
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted-foreground">
               {isOpenSearch ? "End of search results." : "You've reached the end of your matched feed."}
             </p>
           </div>
