@@ -34,8 +34,10 @@ Job-Claw automates the grueling job search process. It intelligently discovers t
 - **Automated ATS Discovery**: Continuously crawls Greenhouse, Lever, Workday, and custom ATS systems to find newly posted jobs.
 - **Intelligent LLM Matching**: Utilizes a dual-sequence AI layer (Groq + Gemini fallback) to semantically score candidate profiles against job requirements and generate detailed match reasoning.
 - **Source Registry Management**: Curate, monitor, and seed hundreds of target domains and career pages from a unified dashboard.
-- **Application Orchestration**: Automates and tracks the status of outbound job applications.
 - **Real-Time Dashboard**: A premium, highly responsive Next.js App Router frontend featuring live status updates via Server-Sent Events (SSE).
+
+### 🚧 In Development (Coming Soon)
+- **Auto-Apply Agent (Playwright Orchestration)**: An autonomous agent designed to navigate ATS portals and submit job applications on your behalf using your synced Candidate Profile. *(UI layout is present, but backend playwright automation is currently being built).*
 
 ---
 
@@ -120,8 +122,3 @@ Job-Claw is rigorously tested across both stacks:
 - **Backend**: Uses `pytest` and `pytest-asyncio` for unit and integration testing against a test database. Run with `pytest` in the `/backend` directory.
 - **Frontend**: Utilizes `Playwright` for comprehensive end-to-end user flow testing. Run with `npx playwright test` in the `/frontend` directory.
 
----
-
-## 📝 License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
