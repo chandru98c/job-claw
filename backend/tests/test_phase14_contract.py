@@ -20,8 +20,8 @@ async def setup_data(async_db_session: AsyncSession):
     job_id = str(uuid.uuid4())
     
     # Create profiles
-    async_db_session.add(Profile(id=profile_id, name="Test1"))
-    async_db_session.add(Profile(id=other_profile_id, name="Test2"))
+    async_db_session.add(Profile(is_active=True, id=profile_id, name="Test1"))
+    async_db_session.add(Profile(is_active=True, id=other_profile_id, name="Test2"))
     
     # Create job
     async_db_session.add(Job(id=job_id, title="Test Job", company_name="Test Company", canonical_apply_url="http://test.com/apply"))

@@ -17,9 +17,13 @@ async def lifespan(app: FastAPI):
     # Setup ARQ Redis Pool (graceful fallback if Redis is temporarily unavailable)
     app.state.redis = None
     try:
+        print("====== ABOUT TO CONNECT TO REDIS ======")
+        print("URL:", settings.REDIS_URL)
         app.state.redis = await create_pool(RedisSettings.from_dsn(settings.REDIS_URL))
+        print("====== CONNECTED TO REDIS ======")
         logger.info("Redis pool initialized")
     except Exception as exc:
+        print("====== REDIS CONNECTION FAILED ======", exc)
         logger.warning("Redis pool unavailable at startup: %s", exc)
 
     yield

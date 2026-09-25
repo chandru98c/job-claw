@@ -11,7 +11,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from datetime import datetime, timezone, timedelta
+
+from sqlalchemy import select
 
 from app.database.database import AsyncSessionLocal
 from app.database.models import Task, TaskEvent, TaskStatus, TaskEventType, Source, CircuitStatus
@@ -58,14 +61,6 @@ async def discovery_task(ctx, task_id: str, input_url: str):
 
     # ─── Task State: RUNNING ────────────────────────────────────────
     async with AsyncSessionLocal() as session:
-        # Check Worker Mode First
-        redis = ctx.get('redis')
-        if redis:
-            mode_bytes = await redis.get("worker:mode")
-            if mode_bytes and mode_bytes.decode("utf-8") == "server":
-                logger.info("Worker is in SERVER mode. Local discovery is disabled. Skipping task.")
-                return "Skipped: Worker in SERVER mode"
-
         from sqlalchemy import text
         from app.database.models import CircuitStatus
         
@@ -292,3 +287,108 @@ async def discovery_task(ctx, task_id: str, input_url: str):
                         await session.commit()
 
         raise
+
+async def scheduled_registry_discovery(ctx: dict):
+    """
+    CRON task to trigger discovery for all active registry sources.
+    Only runs if the worker is in SERVER mode.
+    Respects circuit breaker status, task deduplication, and active flag.
+    """
+    redis = ctx.get("redis")
+    if not redis:
+        return
+async def is_source_eligible_for_discovery(session, source: Source) -> bool:
+    """Check if a source is eligible to be enqueued for discovery."""
+    if not source.is_active:
+        return False
+
+    # Check circuit breaker
+    if source.circuit_status == CircuitStatus.OPEN:
+        if source.next_retry_at and datetime.now(timezone.utc) < source.next_retry_at:
+            return False
+        else:
+            # Time to retry -> HALF_OPEN
+            source.circuit_status = CircuitStatus.HALF_OPEN
+            await session.commit()
+
+    raw_start_url = getattr(source, "start_url", None)
+    raw_domain = getattr(source, "domain", None)
+    start_url = raw_start_url if isinstance(raw_start_url, str) and raw_start_url.strip() else None
+    domain = raw_domain if isinstance(raw_domain, str) and raw_domain.strip() else None
+
+    input_url = start_url if start_url is not None else (f"https://{domain}" if domain is not None else None)
+    if input_url is None:
+        return False
+
+    # Deduplication: already queued or running
+    existing_task = (
+        await session.execute(
+            select(Task).where(
+                Task.target_id == source.id,
+                Task.worker_type == "discovery_task",
+                Task.status.in_([TaskStatus.QUEUED, TaskStatus.RUNNING]),
+            )
+        )
+    ).scalar_one_or_none()
+
+    if existing_task:
+        return False
+        
+    return True
+
+async def scheduled_registry_discovery(ctx):
+    """Cron-triggered registry discovery (e.g. daily/weekly full sweeps)."""
+    redis = ctx["redis"]
+
+    # Check Worker Mode
+    mode_bytes = await redis.get("worker:mode")
+    if not mode_bytes or mode_bytes.decode("utf-8") != "server":
+        return
+
+    async with AsyncSessionLocal() as session:
+        # Fetch active sources
+        res = await session.execute(select(Source).where(Source.is_active == True))
+        active_sources = res.scalars().all()
+
+        queued_count = 0
+        skipped_count = 0
+
+        for source in active_sources:
+            if not await is_source_eligible_for_discovery(session, source):
+                skipped_count += 1
+                continue
+                
+            raw_start_url = getattr(source, "start_url", None)
+            raw_domain = getattr(source, "domain", None)
+            start_url = raw_start_url if isinstance(raw_start_url, str) and raw_start_url.strip() else None
+            domain = raw_domain if isinstance(raw_domain, str) and raw_domain.strip() else None
+            input_url = start_url if start_url is not None else (f"https://{domain}" if domain is not None else None)
+
+
+            # Enqueue
+            task_id = str(uuid.uuid4())
+            task = Task(
+                id=task_id,
+                target_id=source.id,
+                worker_type="discovery_task",
+                status=TaskStatus.QUEUED,
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(task)
+            session.add(
+                TaskEvent(
+                    task_id=task_id,
+                    event_type=TaskEventType.QUEUED,
+                    payload={"target_id": input_url, "source_id": source.id, "domain": domain},
+                )
+            )
+            await session.flush()
+
+            enqueued = await redis.enqueue_job("discovery_task", task_id, input_url, _job_id=task_id)
+            if enqueued:
+                queued_count += 1
+            else:
+                skipped_count += 1
+
+        await session.commit()
+        logger.info(f"Scheduled registry discovery: queued {queued_count}, skipped {skipped_count}.")

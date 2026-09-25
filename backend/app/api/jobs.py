@@ -51,6 +51,7 @@ async def get_jobs(
 
 @router.get("/match", response_model=SearchResponse)
 async def match_jobs(
+    request: Request,
     profile: Profile = Depends(get_valid_profile),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
@@ -60,7 +61,8 @@ async def match_jobs(
     if not profile:
         return SearchResponse(items=[], total=0, page=page, limit=limit)
         
-    results, total = await SearchService.match_candidate(db, profile, page=page, limit=limit)
+    redis_client = getattr(request.app.state, "redis", None)
+    results, total = await SearchService.match_candidate(db, profile, page=page, limit=limit, redis_client=redis_client)
     
     items = []
     for item in results:

@@ -184,7 +184,7 @@ async def run_registry_discovery(request: Request, db: AsyncSession = Depends(ge
         existing_task = (
             await db.execute(
                 select(Task).where(
-                    Task.target_id == input_url,
+                    Task.target_id == source.id,
                     Task.worker_type == "discovery_task",
                     Task.status.in_([TaskStatus.QUEUED, TaskStatus.RUNNING]),
                 )
@@ -198,7 +198,7 @@ async def run_registry_discovery(request: Request, db: AsyncSession = Depends(ge
         task_id = str(uuid.uuid4())
         task = Task(
             id=task_id,
-            target_id=input_url,
+            target_id=source.id,
             worker_type="discovery_task",
             status=TaskStatus.QUEUED,
             created_at=datetime.now(timezone.utc),

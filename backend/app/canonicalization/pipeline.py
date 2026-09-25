@@ -98,7 +98,9 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
                 from datetime import timezone
                 obs_at = obs_at.replace(tzinfo=timezone.utc)
                 
-            if prov.source_job_id == raw_job.provenance.source_job_id and prov.source_type == raw_job.provenance.source_type:
+            if (prov.source_job_id == raw_job.provenance.source_job_id and 
+                prov.source_id == raw_job.provenance.source_id and 
+                prov.source_type == raw_job.provenance.source_type):
                 prov_exists = True
                 # Update observation time
                 if obs_at is None or raw_job.discovered_at > obs_at:

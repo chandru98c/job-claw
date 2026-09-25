@@ -2,7 +2,7 @@ import logging
 from arq.connections import RedisSettings
 from app.core.config import settings
 from app.workers.tasks import dummy_discovery_task
-from app.workers.discovery import discovery_task
+from app.workers.discovery import discovery_task, scheduled_registry_discovery
 from app.workers.canonicalize import canonicalize_job_task
 from app.workers.verification import verify_job_task
 from app.workers.reconciliation import reconcile_stuck_tasks
@@ -40,7 +40,8 @@ class WorkerSettings:
         execute_saved_search_task
     ]
     cron_jobs = [
-        cron(scheduled_saved_searches, minute=0) # Run every hour
+        cron(scheduled_saved_searches, minute=0), # Run every hour
+        cron(scheduled_registry_discovery, hour={2, 14}, minute=0) # Run twice daily at 02:00 and 14:00
     ]
     on_startup = startup
     on_shutdown = shutdown

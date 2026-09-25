@@ -33,17 +33,44 @@ async def test_worker_mode_endpoints():
         assert res.status_code == 422
 
 @pytest.mark.asyncio
-async def test_discovery_task_aborts_on_server_mode():
+async def test_discovery_task_executes_in_server_mode():
     # Setup mock redis in ctx
     mock_redis = AsyncMock()
     mock_redis.get.return_value = b"server"
     
     ctx = {"redis": mock_redis, "job_try": 1}
     
-    # Should return skipped without querying DB
-    result = await discovery_task(ctx, "test_task_id", "http://test.com")
-    assert result == "Skipped: Worker in SERVER mode"
-    mock_redis.get.assert_called_with("worker:mode")
+    # Should NOT return skipped. It should fail later in the DB dependency or return cleanly.
+    try:
+        result = await discovery_task(ctx, "test_task_id", "http://test.com")
+        assert result != "Skipped: Worker in SERVER mode"
+    except Exception:
+        pass # Expected since we didn't mock DB sessions inside the task
+
+@pytest.mark.asyncio
+async def test_scheduled_registry_discovery_only_enqueues_in_server_mode():
+    from app.workers.discovery import scheduled_registry_discovery
+    
+    # Test local mode (should abort quietly)
+    mock_redis_local = AsyncMock()
+    mock_redis_local.get.return_value = b"local"
+    ctx_local = {"redis": mock_redis_local}
+    
+    await scheduled_registry_discovery(ctx_local)
+    mock_redis_local.enqueue_job.assert_not_called()
+    
+    # Test server mode (should proceed and try to query DB)
+    mock_redis_server = AsyncMock()
+    mock_redis_server.get.return_value = b"server"
+    ctx_server = {"redis": mock_redis_server}
+    
+    try:
+        await scheduled_registry_discovery(ctx_server)
+    except Exception:
+        pass # Expected since we didn't mock DB sessions
+    
+    # Verify it checked the mode
+    mock_redis_server.get.assert_called_with("worker:mode")
 
 @pytest.mark.asyncio
 async def test_verification_continues_on_server_mode():

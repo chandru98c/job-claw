@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { JobCard } from "@/components/jobs/job-card";
 import { Sparkles, SlidersHorizontal, ArrowDownWideNarrow, Search, MapPin, Loader2, AlertCircle } from "lucide-react";
 import { useSearchMode, useAppState } from "@/components/providers";
@@ -30,9 +30,18 @@ type JobResponse = {
 export default function Home() {
   const { isOpenSearch } = useSearchMode();
   const { apiMode } = useAppState();
+  
+  // Data states
   const [jobs, setJobs] = useState<JobResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Pagination states
+  const [total, setTotal] = useState<number>(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const observerTarget = useRef<HTMLDivElement>(null);
   
   // Search states
   const [q, setQ] = useState("");
@@ -40,45 +49,102 @@ export default function Home() {
   const [remote, setRemote] = useState(false);
   const [sortMode, setSortMode] = useState<"recent" | "score">(isOpenSearch ? "recent" : "score");
 
-  const fetchJobs = async () => {
-    setLoading(true);
+  const fetchJobs = async (pageNumber: number = 1, signal?: AbortSignal) => {
+    if (pageNumber === 1) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     setError(null);
+    
     try {
       let endpoint = "/jobs";
+      const params = new URLSearchParams();
+      params.append("page", pageNumber.toString());
+      params.append("limit", "20");
       
       if (isOpenSearch) {
-        const params = new URLSearchParams();
         if (q) params.append("q", q);
         if (location) params.append("location", location);
         if (remote) params.append("remote", "true");
         endpoint = `/jobs?${params.toString()}`;
       } else {
-        endpoint = `/jobs/match`;
+        endpoint = `/jobs/match?${params.toString()}`;
       }
       
-      const res = await api.get<{items: JobResponse[]}>(endpoint);
-      setJobs(res.items || []);
+      const res = await api.get<{items: JobResponse[], total: number}>(endpoint);
+      
+      if (signal?.aborted) return;
+      
+      const newJobs = res.items || [];
+      if (pageNumber === 1) {
+        setJobs(newJobs);
+      } else {
+        setJobs(prev => {
+          const existingIds = new Set(prev.map(j => j.id));
+          const uniqueNewJobs = newJobs.filter(j => !existingIds.has(j.id));
+          return [...prev, ...uniqueNewJobs];
+        });
+      }
+      
+      setTotal(res.total || 0);
+      setHasMore(newJobs.length === 20);
+      setPage(pageNumber);
+      
     } catch (e: any) {
+      if (signal?.aborted) return;
       console.error("Failed to fetch jobs", e);
-      setError(e.message || "Failed to load jobs");
+      if (pageNumber === 1) {
+        setError(e.message || "Failed to load jobs");
+      }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchJobs();
+    const controller = new AbortController();
+    fetchJobs(1, controller.signal);
     
-    // Listen for custom event from ProfileDialog
-    const handleProfileUpdate = () => fetchJobs();
+    const handleProfileUpdate = () => {
+      fetchJobs(1, controller.signal);
+    };
     window.addEventListener('profileUpdated', handleProfileUpdate);
-    return () => window.removeEventListener('profileUpdated', handleProfileUpdate);
+    
+    return () => {
+      controller.abort();
+      window.removeEventListener('profileUpdated', handleProfileUpdate);
+    };
   }, [apiMode, isOpenSearch]);
 
-  // Debounced search trigger (naive for now, or just enter key)
+  // Infinite Scroll Observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+          fetchJobs(page + 1);
+        }
+      },
+      { threshold: 1.0 }
+    );
+    
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+    
+    return () => {
+      if (observerTarget.current) {
+        observer.unobserve(observerTarget.current);
+      }
+    };
+  }, [hasMore, loading, loadingMore, page, q, location, remote, isOpenSearch]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      fetchJobs();
+      fetchJobs(1);
     }
   };
 
@@ -97,7 +163,7 @@ export default function Home() {
           <div className="w-full">
             <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2 mb-4">
               <Search className="w-6 h-6 text-primary" />
-              Open Search
+              Open Search {total > 0 && <span className="text-xl font-normal text-muted-foreground ml-2">({total} jobs)</span>}
             </h1>
             <div className="flex flex-col md:flex-row gap-3">
               <div className="relative flex-1">
@@ -129,7 +195,7 @@ export default function Home() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2 mb-2">
               <Sparkles className="w-6 h-6 text-primary" />
-              Discover
+              Discover {total > 0 && <span className="text-xl font-normal text-muted-foreground ml-2">({total} matches)</span>}
             </h1>
             <p className="text-muted-foreground">Curated opportunities matching your active profile.</p>
           </div>
@@ -146,7 +212,7 @@ export default function Home() {
                 checked={remote}
                 onCheckedChange={(checked) => {
                   setRemote(checked);
-                  setTimeout(fetchJobs, 50);
+                  setTimeout(() => fetchJobs(1), 50);
                 }}
                 className="cursor-pointer"
               >
@@ -182,7 +248,7 @@ export default function Home() {
           <div className="text-center py-20 bg-destructive/10 rounded-[24px] border border-destructive/20">
             <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-4" />
             <p className="text-destructive font-medium">{error}</p>
-            <Button variant="outline" onClick={fetchJobs} className="mt-4 text-destructive border-destructive/20 hover:bg-destructive/10">Try Again</Button>
+            <Button variant="outline" onClick={() => fetchJobs(1)} className="mt-4 text-destructive border-destructive/20 hover:bg-destructive/10">Try Again</Button>
           </div>
         ) : sortedJobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -191,37 +257,46 @@ export default function Home() {
             <p className="text-muted-foreground max-w-md">Try adjusting your filters or search terms.</p>
           </div>
         ) : (
-          sortedJobs.map(job => (
-            <JobCard 
-              key={job.id}
-              title={job.title}
-              company={job.company_name}
-              location={job.location || "Remote"}
-              source={job.status === "ACTIVE" ? "Direct" : job.status}
-              matchScore={job.matchScore}
-              matchReasons={job.matchReasons}
-              timeAgo={job.timeAgo}
-              type={job.job_type || "Full-time"}
-              hideMatchScore={isOpenSearch}
-              externalUrl={job.canonical_apply_url}
-              onPrepareApplication={async () => {
-                try {
-                  await api.post("/applications", { job_id: job.id });
-                  alert("Application preparation started. View it in the Applications tab.");
-                } catch (e: any) {
-                  alert(e.message || "Failed to prepare application");
-                }
-              }}
-            />
-          ))
-        )}
-
-        {!loading && jobs.length > 0 && (
-          <div className="py-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              {isOpenSearch ? "End of search results." : "You've reached the end of your matched feed."}
-            </p>
-          </div>
+          <>
+            {sortedJobs.map(job => (
+              <JobCard 
+                key={job.id}
+                title={job.title}
+                company={job.company_name}
+                location={job.location || "Remote"}
+                source={job.status === "ACTIVE" ? "Direct" : job.status}
+                matchScore={job.matchScore}
+                matchReasons={job.matchReasons}
+                timeAgo={job.timeAgo}
+                type={job.job_type || "Full-time"}
+                hideMatchScore={isOpenSearch}
+                externalUrl={job.canonical_apply_url}
+                onPrepareApplication={async () => {
+                  try {
+                    await api.post("/applications", { job_id: job.id });
+                    alert("Application preparation started. View it in the Applications tab.");
+                  } catch (e: any) {
+                    alert(e.message || "Failed to prepare application");
+                  }
+                }}
+              />
+            ))}
+            
+            {/* Infinite Scroll Sentinel */}
+            {hasMore && (
+              <div ref={observerTarget} className="flex justify-center items-center py-8">
+                {loadingMore && <Loader2 className="w-6 h-6 text-primary animate-spin" />}
+              </div>
+            )}
+            
+            {!hasMore && jobs.length > 0 && (
+              <div className="py-8 text-center">
+                <p className="text-sm text-muted-foreground">
+                  {isOpenSearch ? "End of search results." : "You've reached the end of your matched feed."}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

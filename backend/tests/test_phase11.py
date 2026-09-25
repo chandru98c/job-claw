@@ -32,7 +32,7 @@ async def test_duplicate_application_prevention(client, async_db_session):
     profile_id = f"profile_{uuid.uuid4().hex[:8]}"
     
     job = Job(id=job_id, title="Test Engineer", company_name="Mock ATS", canonical_apply_url="http://localhost:8000/mock-ats/job/job_test_1/apply", status=JobStatus.ACTIVE)
-    profile = Profile(id=profile_id, name="Alice Bob", email="alice@example.com", phone="1234567890")
+    profile = Profile(is_active=True, id=profile_id, name="Alice Bob", email="alice@example.com", phone="1234567890")
     
     async_db_session.add(job)
     async_db_session.add(profile)
@@ -53,8 +53,8 @@ async def test_authorization_checks(client, async_db_session):
     profile2_id = f"profile_{uuid.uuid4().hex[:8]}"
     
     job = Job(id=job_id, title="Test Engineer", company_name="Mock ATS", canonical_apply_url="http://localhost:8000/mock-ats/job/job_test_1/apply", status=JobStatus.ACTIVE)
-    profile = Profile(id=profile_id, name="Alice Bob")
-    profile2 = Profile(id=profile2_id, name="Eve Bob")
+    profile = Profile(is_active=True, id=profile_id, name="Alice Bob")
+    profile2 = Profile(is_active=True, id=profile2_id, name="Eve Bob")
     
     async_db_session.add_all([job, profile, profile2])
     await async_db_session.commit()
@@ -77,7 +77,7 @@ async def test_approval_flow_state_machine(client, async_db_session):
     profile_id = f"profile_{uuid.uuid4().hex[:8]}"
     
     job = Job(id=job_id, title="Test Engineer", company_name="Mock ATS", canonical_apply_url="http://localhost:8000/mock-ats/job/job_test_1/apply", status=JobStatus.ACTIVE)
-    profile = Profile(id=profile_id, name="Alice Bob")
+    profile = Profile(is_active=True, id=profile_id, name="Alice Bob")
     async_db_session.add_all([job, profile])
     await async_db_session.commit()
     

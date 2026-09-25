@@ -15,13 +15,17 @@ class WorkerModeUpdate(BaseModel):
 
 @router.get("/worker-mode")
 async def get_worker_mode(request: Request):
-    redis_pool = getattr(request.app.state, "redis", None)
-    if redis_pool is None:
-        return {"mode": "local"}
+    try:
+        redis_pool = getattr(request.app.state, "redis", None)
+        if redis_pool is None:
+            return {"mode": "local"}
 
-    mode_bytes = await redis_pool.get("worker:mode")
-    mode = mode_bytes.decode("utf-8") if mode_bytes else "local"
-    return {"mode": mode}
+        mode_bytes = await redis_pool.get("worker:mode")
+        mode = mode_bytes.decode("utf-8") if mode_bytes else "local"
+        return {"mode": mode}
+    except Exception as e:
+        import traceback
+        return {"mode": "local", "error": traceback.format_exc()}
 
 
 @router.post("/worker-mode")

@@ -17,7 +17,7 @@ from app.discovery.engine import DiscoveryEngine
 from app.discovery.budget import ResourceBudget
 from app.core.http import DomainPolicy
 from app.canonicalization.pipeline import process_raw_job
-from app.schemas.discovery import RawJob
+from app.schemas.discovery import RawJob, SourceConfig
 from app.schemas.search import SearchQuery
 from app.services.search import SearchService
 
@@ -50,12 +50,6 @@ async def execute_saved_search_task(ctx: Dict[Any, Any], search_id: str) -> str:
         
     try:
         async with AsyncSessionLocal() as session:
-            # Check worker mode
-            mode_bytes = await redis.get("worker:mode")
-            if mode_bytes and mode_bytes.decode("utf-8") == "server":
-                logger.info("Worker is in SERVER mode. Skipping saved search.")
-                return "Skipped: Worker in SERVER mode"
-                
             # Load Search
             result = await session.execute(
                 select(SavedSearch).options(selectinload(SavedSearch.profile)).where(SavedSearch.id == search_id)
@@ -63,10 +57,12 @@ async def execute_saved_search_task(ctx: Dict[Any, Any], search_id: str) -> str:
             saved_search = result.scalar_one_or_none()
             
             if not saved_search or not saved_search.enabled:
+                print(f"DEBUG EARLY RETURN: Not found or disabled (saved_search={saved_search})")
                 return "Skipped: Not found or disabled"
                 
             profile = saved_search.profile
             if not profile:
+                print("DEBUG EARLY RETURN: No profile")
                 return "Failed: No profile"
                 
             # Snapshot
@@ -93,7 +89,15 @@ async def execute_saved_search_task(ctx: Dict[Any, Any], search_id: str) -> str:
                 if not source.start_url:
                     continue
                 try:
-                    disc_res = await engine.discover(source.start_url)
+                    source_config = SourceConfig(
+                        source_id=source.id,
+                        company=source.domain,
+                        domain=source.domain,
+                        careers_url=source.start_url,
+                        ats_type=source.ats_type,
+                        enabled=source.is_active
+                    )
+                    disc_res = await engine.discover(source.start_url, source_config=source_config)
                     if disc_res.raw_jobs:
                         total_raw_jobs.extend(disc_res.raw_jobs)
                 except Exception as e:
@@ -121,6 +125,7 @@ async def execute_saved_search_task(ctx: Dict[Any, Any], search_id: str) -> str:
                 sync_db.close()
                 
             if not canonical_job_ids:
+                print(f"DEBUG EARLY RETURN: No canonical jobs. total_raw_jobs: {len(total_raw_jobs)}")
                 saved_search.last_run_at = datetime.now(timezone.utc)
                 await session.commit()
                 return "Completed: No jobs discovered"
@@ -128,7 +133,15 @@ async def execute_saved_search_task(ctx: Dict[Any, Any], search_id: str) -> str:
             # Matching
             # The SearchService can filter by query/location
             # Let's run `SearchService.open_search` with the snapshot
+            print(f"DEBUG: Running open_search for query_snapshot: {query_snapshot.model_dump()}")
             matches, total = await SearchService.open_search(session, query_snapshot)
+            print(f"DEBUG: open_search returned {total} matches. Len matches list: {len(matches)}")
+            
+            if total == 0:
+                print(f"DEBUG: Let's do a raw query to see if session sees it!")
+                r = await session.execute(select(Job).where(Job.title.ilike("%python%")))
+                j = r.scalars().all()
+                print(f"DEBUG: RAW QUERY found {len(j)} jobs with ilike '%python%'.")
             
             # Filter matches to only the ones we just discovered/canonicalized? 
             # Actually, the saved search should surface ANY jobs in the DB matching the criteria,
@@ -184,6 +197,10 @@ async def scheduled_saved_searches(ctx: Dict[Any, Any]):
     if not redis:
         return
         
+    mode_bytes = await redis.get("worker:mode")
+    if not mode_bytes or mode_bytes.decode("utf-8") != "server":
+        return
+
     async with AsyncSessionLocal() as session:
         res = await session.execute(select(SavedSearch).where(SavedSearch.enabled == True))
         searches = res.scalars().all()

@@ -53,9 +53,11 @@ class AshbyAdapter(ATSAdapter):
 
     def generate_candidates(self, url: str = None, source: SourceConfig = None) -> list[StrategyCandidate]:
         source_id = None
+        if source:
+            source_id = source.source_id
+            
         if source and source.identifier:
             board_token = source.identifier
-            source_id = source.source_id
         elif url:
             board_token = self.extract_board_identifier(url)
         else:

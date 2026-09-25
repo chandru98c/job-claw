@@ -151,51 +151,37 @@ class LLMStrategy(DiscoveryStrategy):
         return result
 
     async def _call_llm(self, text: str) -> list[dict]:
-        import aiohttp
-        groq_key = os.environ.get("GROQ_API_KEY")
-        model = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+        from pydantic import BaseModel, Field
+        from app.core.llm import llm_client
         
-        if not groq_key:
-            raise Exception("No LLM API key configured in environment")
+        class ExtractedJob(BaseModel):
+            title: str = Field(..., description="The job title")
+            company: str = Field(..., description="The hiring company name")
+            location: str | None = Field(None, description="The job location")
+            employment_type: str | None = Field(None, description="Employment type (e.g. Full-time, Contract)")
+            remote_status: str | None = Field(None, description="Remote status (e.g. Remote, Hybrid, On-site)")
+
+        class ExtractedJobsList(BaseModel):
+            jobs: list[ExtractedJob] = Field(..., description="List of extracted jobs")
             
         prompt = f"""
         Extract job listings from the following text.
-        Return ONLY a JSON array of objects.
-        Each object must have: 'title', 'company'.
+        Return ONLY a JSON object containing a 'jobs' array.
+        Each job must have: 'title', 'company'.
         Optional fields: 'location', 'employment_type', 'remote_status'.
         
         TEXT:
         {text}
         """
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {groq_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.0,
-                    "response_format": {"type": "json_object"}
-                },
-                timeout=30
-            ) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    raise Exception(f"LLM API returned {resp.status}: {body}")
-                data = await resp.json()
-                content = data["choices"][0]["message"]["content"]
-                
-                parsed = json.loads(content)
-                # handle if wrapped in a dict
-                if isinstance(parsed, dict):
-                    for k, v in parsed.items():
-                        if isinstance(v, list):
-                            return v
-                    return []
-                elif isinstance(parsed, list):
-                    return parsed
-                return []
+        try:
+            result = await llm_client.generate_structured(
+                prompt=prompt,
+                schema=ExtractedJobsList,
+                timeout=45
+            )
+            # Convert back to dicts to maintain existing contract
+            return [job.model_dump() for job in result.jobs]
+        except Exception as e:
+            logger.error(f"LLMClient failed to extract jobs: {e}")
+            raise Exception(f"LLM extraction failed: {e}")

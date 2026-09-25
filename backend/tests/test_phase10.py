@@ -36,7 +36,8 @@ async def search_db_session():
         session.add_all(jobs)
         
         profile = Profile(
-            name="Test User",
+            is_active=True,
+            name="Developer",
             skills=["Python", "AWS", "SQL"],
             location="San Francisco, CA",
             preferred_locations=["Remote"],
@@ -110,7 +111,7 @@ async def test_match_candidate_word_boundaries(search_db_session):
     )
     search_db_session.add(job)
     
-    profile = Profile(name="C Developer", skills=["C"])
+    profile = Profile(is_active=True, name="C Developer", skills=["C"])
     search_db_session.add(profile)
     await search_db_session.commit()
     

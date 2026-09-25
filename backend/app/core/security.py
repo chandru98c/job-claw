@@ -111,8 +111,13 @@ from app.database.models import Profile
 from sqlalchemy import select
 
 async def get_valid_profile(request: Request, db: AsyncSession = Depends(get_db)) -> Profile:
-    res = await db.execute(select(Profile).where(Profile.is_active == True))
-    profile = res.scalar_one_or_none()
+    profile_id = request.headers.get("X-Profile-ID")
+    if profile_id:
+        res = await db.execute(select(Profile).where(Profile.id == profile_id, Profile.is_active == True))
+        profile = res.scalar_one_or_none()
+    else:
+        res = await db.execute(select(Profile).where(Profile.is_active == True))
+        profile = res.scalar_one_or_none()
     
     if not profile:
         raise HTTPException(status_code=404, detail="No active profile found. Please create or activate a profile.")
