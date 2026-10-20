@@ -128,6 +128,7 @@ class Job(Base):
     
     # Freshness state machine
     status = Column(Enum(JobStatus), default=JobStatus.UNKNOWN, index=True)
+    posted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     last_source_seen_at = Column(DateTime(timezone=True), nullable=True)
     last_verified_at = Column(DateTime(timezone=True), nullable=True)
     

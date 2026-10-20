@@ -188,6 +188,16 @@ class ZohoRecruitAdapter(ATSAdapter):
                 discovered_at=datetime.now(timezone.utc)
             )
 
+            posted_dt = None
+            date_str = item.get("Date_Opened") or item.get("Posting_Date") or item.get("date_opened") or item.get("Created_Time")
+            if date_str and isinstance(date_str, str):
+                try:
+                    from datetime import datetime
+                    clean_ts = date_str.replace("Z", "+00:00")
+                    posted_dt = datetime.fromisoformat(clean_ts)
+                except Exception:
+                    pass
+
             raw_jobs.append(RawJob(
                 provenance=provenance,
                 title=title[:MAX_TITLE_LEN],
@@ -196,6 +206,7 @@ class ZohoRecruitAdapter(ATSAdapter):
                 description=desc,
                 employment_type=item.get("Job_Type") or "Full-time",
                 remote_status=remote_status,
+                posted_at=posted_dt,
                 provider_metadata={
                     "zoho_opening_id": job_id,
                     "raw_city": city,

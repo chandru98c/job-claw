@@ -166,7 +166,7 @@ class AshbyAdapter(ATSAdapter):
                 description = j.get("descriptionHtml") or j.get("descriptionPlain") or title
                 employment_type = j.get("employmentType") or "Full-time"
                 is_remote = bool(j.get("isRemote"))
-                remote_status = "remote" if is_remote else "on-site"
+                remote_status = "Remote" if is_remote else "On-site"
 
                 provenance = DiscoveryProvenanceDTO(
                     strategy_id=self.strategy_id,
@@ -179,6 +179,16 @@ class AshbyAdapter(ATSAdapter):
                     provider_name=self.ats_name,
                 )
 
+                posted_dt = None
+                published_at_str = j.get("publishedAt") or j.get("openedAt") or j.get("createdAt")
+                if published_at_str and isinstance(published_at_str, str):
+                    try:
+                        from datetime import datetime
+                        clean_ts = published_at_str.replace("Z", "+00:00")
+                        posted_dt = datetime.fromisoformat(clean_ts)
+                    except Exception:
+                        pass
+
                 raw_jobs.append(
                     RawJob(
                         provenance=provenance,
@@ -188,6 +198,7 @@ class AshbyAdapter(ATSAdapter):
                         location=location[:255] if location else None,
                         remote_status=remote_status[:64],
                         employment_type=employment_type[:128],
+                        posted_at=posted_dt,
                         provider_metadata={"department": j.get("departmentName") or ""}
                     )
                 )

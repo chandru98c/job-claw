@@ -36,8 +36,8 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
       env: {
-        DATABASE_URL: 'postgresql+asyncpg://postgres:Postpass123@localhost:5432/jobclaw_test',
-        REDIS_URL: 'redis://localhost:6379/1',
+        DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql+asyncpg://postgres:postgres@localhost:5432/jobclaw_test',
+        REDIS_URL: process.env.TEST_REDIS_URL || process.env.REDIS_URL || 'redis://localhost:6379/1',
         E2E_MODE: '1'
       }
     },
@@ -46,8 +46,8 @@ export default defineConfig({
       cwd: '../backend',
       reuseExistingServer: !process.env.CI,
       env: {
-        DATABASE_URL: 'postgresql+asyncpg://postgres:Postpass123@localhost:5432/jobclaw_test',
-        REDIS_URL: 'redis://localhost:6379/1',
+        DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql+asyncpg://postgres:postgres@localhost:5432/jobclaw_test',
+        REDIS_URL: process.env.TEST_REDIS_URL || process.env.REDIS_URL || 'redis://localhost:6379/1',
         E2E_MODE: '1'
       }
     }

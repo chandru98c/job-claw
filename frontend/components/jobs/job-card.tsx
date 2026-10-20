@@ -21,6 +21,8 @@ interface JobCardProps {
   experienceLevel?: string | null;
   corridor?: string | null;
   city?: string | null;
+  postedAt?: string | null;
+  discoveredAt?: string | null;
   onPrepareApplication?: () => void;
   externalUrl?: string;
 }
@@ -122,31 +124,42 @@ function getSourceBadge(source: string, url?: string) {
 }
 
 function getCorridorBadge(corridor?: string | null, location?: string | null) {
-  const target = (corridor || location || "").toLowerCase();
-  if (target.includes("omr") || target.includes("siruseri") || target.includes("taramani") || target.includes("tidel")) {
-    return { name: "OMR Corridor", color: "text-amber-300 bg-amber-400/10 border-amber-400/30 font-semibold" };
+  if (corridor) {
+    const c = corridor.toLowerCase();
+    if (c.includes("omr") || c.includes("siruseri") || c.includes("taramani") || c.includes("tidel")) {
+      return { name: "OMR Corridor", color: "text-amber-300 bg-amber-400/10 border-amber-400/30 font-semibold" };
+    }
+    if (c.includes("guindy") || c.includes("mepz") || c.includes("olympia") || c.includes("tambaram")) {
+      return { name: "Guindy Hub", color: "text-emerald-300 bg-emerald-400/10 border-emerald-400/30 font-semibold" };
+    }
+    if (c.includes("dlf") || c.includes("porur") || c.includes("manapakkam")) {
+      return { name: "DLF Porur", color: "text-cyan-300 bg-cyan-400/10 border-cyan-400/30 font-semibold" };
+    }
+    if (c.includes("coimbatore") && c.includes("tidel")) {
+      return { name: "Coimbatore TIDEL", color: "text-teal-300 bg-teal-400/10 border-teal-400/30 font-semibold" };
+    }
+    if (c.includes("whitefield")) {
+      return { name: "Whitefield", color: "text-purple-300 bg-purple-400/10 border-purple-400/30 font-semibold" };
+    }
+    if (c.includes("electronic city") || c.includes("e-city")) {
+      return { name: "Electronic City", color: "text-purple-300 bg-purple-400/10 border-purple-400/30 font-semibold" };
+    }
+    if (c.includes("hitec") || c.includes("gachibowli") || c.includes("madhapur")) {
+      return { name: "HITEC City", color: "text-blue-300 bg-blue-400/10 border-blue-400/30 font-semibold" };
+    }
+    if (c.includes("hosur")) {
+      return { name: "Hosur Corridor", color: "text-orange-300 bg-orange-400/10 border-orange-400/30 font-semibold" };
+    }
+    if (c.includes("remote")) {
+      return { name: "Remote", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20 font-semibold" };
+    }
+    return null;
   }
-  if (target.includes("guindy") || target.includes("mepz") || target.includes("olympia") || target.includes("tambaram")) {
-    return { name: "Guindy Hub", color: "text-emerald-300 bg-emerald-400/10 border-emerald-400/30 font-semibold" };
-  }
-  if (target.includes("dlf") || target.includes("porur") || target.includes("manapakkam")) {
-    return { name: "DLF Porur", color: "text-cyan-300 bg-cyan-400/10 border-cyan-400/30 font-semibold" };
-  }
-  if (target.includes("coimbatore") || target.includes("saravanampatti")) {
-    return { name: "Coimbatore TIDEL", color: "text-teal-300 bg-teal-400/10 border-teal-400/30 font-semibold" };
-  }
-  if (target.includes("whitefield") || target.includes("bengaluru") || target.includes("bangalore")) {
-    return { name: "Bengaluru Tech", color: "text-purple-300 bg-purple-400/10 border-purple-400/30 font-semibold" };
-  }
-  if (target.includes("hitec") || target.includes("hyderabad") || target.includes("gachibowli")) {
-    return { name: "Hyderabad Hub", color: "text-blue-300 bg-blue-400/10 border-blue-400/30 font-semibold" };
-  }
-  if (target.includes("hosur")) {
-    return { name: "Hosur Corridor", color: "text-orange-300 bg-orange-400/10 border-orange-400/30 font-semibold" };
-  }
-  if (target.includes("remote")) {
+  
+  if (location && location.toLowerCase().includes("remote")) {
     return { name: "Remote", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20 font-semibold" };
   }
+  
   return null;
 }
 
@@ -169,6 +182,8 @@ export function JobCard({
   experienceLevel,
   corridor,
   city,
+  postedAt,
+  discoveredAt,
   onPrepareApplication,
   externalUrl,
 }: JobCardProps) {
@@ -183,8 +198,8 @@ export function JobCard({
   const sourceInfo = getSourceBadge(source, externalUrl);
   const corridorInfo = getCorridorBadge(corridor, location);
 
-  // Clean location string removing parenthetical duplicates for display
-  const cleanLoc = location ? location.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim() : "Remote / Unspecified";
+  // Clean location string removing noise for display
+  const cleanLoc = location ? location.trim() : "Remote / Unspecified";
 
   return (
     <div
@@ -213,9 +228,16 @@ export function JobCard({
                 </span>
               )}
 
-              {/* Time Ago */}
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="w-3 h-3" />
+              {/* Time Badge */}
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-mono rounded-full border shadow-sm ${
+                  postedAt
+                    ? "bg-[#c8f542]/10 text-[#c8f542] border-[#c8f542]/30 font-semibold"
+                    : "bg-white/[0.04] text-zinc-400 border-white/10"
+                }`}
+                title={postedAt ? `Direct Employer Post: ${new Date(postedAt).toLocaleDateString()}` : `Discovered: ${timeAgo}`}
+              >
+                <Clock className={`w-3 h-3 ${postedAt ? "text-[#c8f542]" : "text-zinc-500"}`} />
                 {timeAgo}
               </span>
 
@@ -256,7 +278,7 @@ export function JobCard({
               <div className="flex items-center gap-1.5">
                 <MapPin className="w-4 h-4 text-[#c8f542]" />
                 <span className="text-zinc-300">{cleanLoc}</span>
-                {corridor && !cleanLoc.toLowerCase().includes(corridor.toLowerCase()) && (
+                {corridor && !["remote", "unspecified", "chennai central", "bengaluru tech hub", "hyderabad tech hub"].includes(corridor.toLowerCase()) && !cleanLoc.toLowerCase().includes(corridor.toLowerCase()) && (
                   <span className="text-xs text-muted-foreground">({corridor})</span>
                 )}
               </div>

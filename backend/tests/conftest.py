@@ -4,7 +4,7 @@ import os
 from typing import AsyncGenerator
 
 # Enforce test isolation before any app imports
-os.environ["REDIS_URL"] = "redis://localhost:6379/1"
+os.environ["REDIS_URL"] = "redis://127.0.0.1:6379/1"
 
 from sqlalchemy.ext.asyncio import AsyncSession
 import app.database.database as db_module

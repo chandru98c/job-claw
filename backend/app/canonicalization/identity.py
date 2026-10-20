@@ -36,21 +36,17 @@ def resolve_identity(db: Session, raw_job: RawJob) -> Optional[Job]:
     norm_location = normalize_location(raw_job.location)
     
     if norm_title and norm_company:
-        query = db.query(Job).filter(
+        matches = db.query(Job).filter(
             Job.company_name == norm_company,
             Job.title == norm_title
-        )
+        ).all()
         
-        # Location might be None in raw_job
+        # Location matching with normalization
         if norm_location:
-            query = query.filter(
-                or_(
-                    Job.location == norm_location,
-                    Job.location.is_(None)
-                )
-            )
-            
-        matches = query.all()
+            matches = [
+                m for m in matches
+                if not m.location or normalize_location(m.location) == norm_location
+            ]
         # If we have exactly one match, we are confident.
         # If there are multiple matches, we skip deterministic matching to avoid merging wrong jobs (could be multiple requisitions for same title/company)
         if len(matches) == 1:

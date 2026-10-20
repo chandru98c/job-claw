@@ -11,6 +11,7 @@ from app.canonicalization.normalize import (
     normalize_title,
     normalize_company,
     normalize_location,
+    clean_location_display,
     normalize_url
 )
 from app.canonicalization.identity import resolve_identity
@@ -111,20 +112,26 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
         # Enrich metadata
         desc_text = raw_job.description or ""
         # Extract and enrich degree / education
-        degree = extract_degree(desc_text) or extract_degree(raw_job.title)
+        degree = extract_degree(raw_job.title) or extract_degree(desc_text)
         sal_min, sal_max, sal_curr = extract_salary(desc_text)
         role = classify_role(raw_job.title, desc_text)
         exp = extract_experience(raw_job.title, desc_text)
 
-        # Normalize location accurately: prioritize explicit raw_job.location over text body
+        # Normalize location accurately: prioritize explicit structured raw_job.location
         raw_loc = (raw_job.location or "").strip()
-        norm_loc_si, corridor = normalize_south_india_location(raw_loc, raw_job.title)
-        if corridor:
-            norm_location = norm_loc_si
-        elif raw_loc and raw_loc.lower() not in ("unspecified", "india"):
-            norm_location = normalize_location(raw_loc) or norm_loc_si or raw_loc
+        is_remote = (raw_job.remote_status == "remote") or ("remote" in raw_loc.lower())
+        
+        if raw_loc and raw_loc.lower() not in ("unspecified", "india", "remote", ""):
+            cleaned_loc = clean_location_display(raw_loc)
+            norm_loc_si, corridor = normalize_south_india_location(cleaned_loc, raw_job.title)
+            if corridor:
+                norm_location = norm_loc_si
+            else:
+                norm_location = cleaned_loc
+        elif is_remote:
+            norm_location = "Remote"
         else:
-            norm_location = norm_loc_si or "India"
+            norm_location = "Unspecified"
 
         # Apply URL handling: NEVER allow WordPress aggregator blog link or generic root career page to be stored as canonical_apply_url!
         norm_apply = resolve_canonical_apply_url(raw_job)
@@ -132,7 +139,7 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
         job = Job(
             title=norm_title or raw_job.title,
             company_name=norm_company or raw_job.company,
-            location=norm_location or "India",
+            location=norm_location,
             canonical_apply_url=norm_apply,
             description=raw_job.description,
             job_type=raw_job.employment_type,
@@ -144,7 +151,8 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
             role_category=role,
             experience_level=exp,
             status=JobStatus.ACTIVE,
-            last_source_seen_at=raw_job.discovered_at
+            posted_at=raw_job.posted_at,
+            last_source_seen_at=raw_job.discovered_at or datetime.now(timezone.utc)
         )
         db.add(job)
         db.flush() # get ID
@@ -165,7 +173,7 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
             source_job_id=raw_job.provenance.source_job_id,
             source_url=normalize_url(raw_job.provenance.source_url),
             raw_payload=raw_job.provider_metadata,
-            observed_at=raw_job.discovered_at
+            observed_at=raw_job.posted_at or raw_job.discovered_at
         )
         db.add(prov)
         
@@ -181,6 +189,14 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
         # We found an existing job
         result = "SAME"
         
+        # Update true posting date if newly discovered
+        if raw_job.posted_at and not existing_job.posted_at:
+            existing_job.posted_at = raw_job.posted_at
+            result = "UPDATED"
+        elif raw_job.posted_at and existing_job.posted_at and raw_job.posted_at > existing_job.posted_at:
+            existing_job.posted_at = raw_job.posted_at
+            result = "UPDATED"
+        
         # 2. Check if we need to update lifecycle
         if existing_job.status in (JobStatus.EXPIRED, JobStatus.STALE, JobStatus.UNKNOWN):
             existing_job.status = JobStatus.ACTIVE
@@ -191,8 +207,13 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
             from datetime import timezone
             last_seen = last_seen.replace(tzinfo=timezone.utc)
             
-        if not last_seen or raw_job.discovered_at > last_seen:
-            existing_job.last_source_seen_at = raw_job.discovered_at
+        new_seen_ts = raw_job.discovered_at or datetime.now(timezone.utc)
+        if new_seen_ts and new_seen_ts.tzinfo is None:
+            from datetime import timezone
+            new_seen_ts = new_seen_ts.replace(tzinfo=timezone.utc)
+
+        if not last_seen or new_seen_ts > last_seen:
+            existing_job.last_source_seen_at = new_seen_ts
             
         # 3. Check for Provenance deduplication
         norm_source_url = normalize_url(raw_job.provenance.source_url)
@@ -245,7 +266,7 @@ def process_raw_job(db: Session, raw_job: RawJob) -> Tuple[str, Job]:
             new_state["title"] = norm_title
             existing_job.title = norm_title
             
-        if norm_location and existing_job.location != norm_location:
+        if norm_location and normalize_location(existing_job.location) != normalize_location(norm_location):
             changed_fields.append("location")
             old_state["location"] = existing_job.location
             new_state["location"] = norm_location

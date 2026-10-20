@@ -20,6 +20,7 @@ import {
   Building2,
   ChevronDown,
   Globe,
+  Sparkles,
 } from "lucide-react";
 import { useSearchMode, useAppState } from "@/components/providers";
 import { api } from "@/lib/api";
@@ -55,6 +56,7 @@ export type JobResponse = {
   city?: string | null;
   created_at?: string | null;
   discovered_at?: string | null;
+  posted_at?: string | null;
 };
 
 const ROLES = [
@@ -201,7 +203,7 @@ export default function Home() {
   const [degree, setDegree] = useState("");
   const [experience, setExperience] = useState("");
   const [salaryPreset, setSalaryPreset] = useState("");
-  const [sortMode, setSortMode] = useState<"recent" | "score">(isOpenSearch ? "recent" : "score");
+  const [sortMode, setSortMode] = useState<"posted_at" | "discovered" | "score">(isOpenSearch ? "posted_at" : "score");
   const [locationStats, setLocationStats] = useState<Record<string, { count: number }>>({});
 
   // Load real-time location counts from backend API
@@ -240,7 +242,7 @@ export default function Home() {
 
         const endpoint = isOpenSearch ? `/jobs?${params.toString()}` : `/jobs/match?${params.toString()}`;
 
-        const res = await api.get<{ items: JobResponse[]; total: number }>(endpoint);
+        const res = await api.get<{ items: JobResponse[]; total: number }>(endpoint, { signal });
 
         if (signal?.aborted) return;
 
@@ -337,10 +339,22 @@ export default function Home() {
       const scoreDiff = (b.matchScore || 0) - (a.matchScore || 0);
       if (scoreDiff !== 0) return scoreDiff;
     }
-    // "recent" mode or score tie-breaker: newest discovered timestamp strictly first
-    const timeB = b.discovered_at ? new Date(b.discovered_at).getTime() : (b.created_at ? new Date(b.created_at).getTime() : 0);
-    const timeA = a.discovered_at ? new Date(a.discovered_at).getTime() : (a.created_at ? new Date(a.created_at).getTime() : 0);
-    return timeB - timeA;
+    if (sortMode === "discovered") {
+      const tsB = b.discovered_at || b.created_at;
+      const tsA = a.discovered_at || a.created_at;
+      const timeB = tsB ? new Date(tsB).getTime() : 0;
+      const timeA = tsA ? new Date(tsA).getTime() : 0;
+      return timeB - timeA;
+    }
+    // "posted_at" mode (Default): strictly newest employer posting date first, NULLS LAST
+    const timeB = b.posted_at ? new Date(b.posted_at).getTime() : -1;
+    const timeA = a.posted_at ? new Date(a.posted_at).getTime() : -1;
+    if (timeB !== timeA) return timeB - timeA;
+
+    // Tie-breaker if both posted_at are equal or null: discovered timestamp
+    const discB = b.discovered_at || b.created_at;
+    const discA = a.discovered_at || a.created_at;
+    return (discB ? new Date(discB).getTime() : 0) - (discA ? new Date(discA).getTime() : 0);
   });
 
   return (
@@ -381,31 +395,53 @@ export default function Home() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 id="sort-menu-btn"
-                className={buttonVariants({ variant: "outline", size: "sm" }) + " h-9 gap-1.5 border-white/10 text-xs cursor-pointer bg-card/40 backdrop-blur-md"}
+                className={buttonVariants({ variant: "outline", size: "sm" }) + " h-9 gap-1.5 border-white/10 text-xs cursor-pointer bg-card/40 backdrop-blur-md hover:border-[#c8f542]/40 hover:text-[#c8f542]"}
               >
-                <ArrowDownWideNarrow className="w-3.5 h-3.5" />
-                Sort: {sortMode === "recent" ? "Recent" : "Match Score"}
+                <ArrowDownWideNarrow className="w-3.5 h-3.5 text-[#c8f542]" />
+                Sort: {sortMode === "posted_at" ? "Recently Posted" : sortMode === "discovered" ? "Recently Discovered" : "Match Score"}
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48 bg-card/95 border-border backdrop-blur-xl">
+              <DropdownMenuContent align="end" className="w-56 bg-card/95 border-border backdrop-blur-xl">
                 <DropdownMenuItem
-                  id="sort-recent-btn"
-                  className={`cursor-pointer text-xs ${sortMode === "recent" ? "text-[#c8f542] font-semibold" : ""}`}
+                  id="sort-posted-btn"
+                  className={`cursor-pointer text-xs flex items-center justify-between ${sortMode === "posted_at" ? "text-[#c8f542] font-semibold bg-[#c8f542]/10" : ""}`}
                   onClick={() => {
-                    setSortMode("recent");
+                    setSortMode("posted_at");
                     setPage(1);
                   }}
                 >
-                  Most Recent Discovered
+                  <span className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-[#c8f542]" />
+                    Recently Posted (Job Post Time)
+                  </span>
+                  {sortMode === "posted_at" && <span className="text-[#c8f542] text-xs font-bold">✓</span>}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  id="sort-discovered-btn"
+                  className={`cursor-pointer text-xs flex items-center justify-between ${sortMode === "discovered" ? "text-[#c8f542] font-semibold bg-[#c8f542]/10" : ""}`}
+                  onClick={() => {
+                    setSortMode("discovered");
+                    setPage(1);
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <Compass className="w-3.5 h-3.5 text-zinc-400" />
+                    Recently Discovered (Found Time)
+                  </span>
+                  {sortMode === "discovered" && <span className="text-[#c8f542] text-xs font-bold">✓</span>}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   id="sort-score-btn"
-                  className={`cursor-pointer text-xs ${sortMode === "score" ? "text-[#c8f542] font-semibold" : ""}`}
+                  className={`cursor-pointer text-xs flex items-center justify-between ${sortMode === "score" ? "text-[#c8f542] font-semibold bg-[#c8f542]/10" : ""}`}
                   onClick={() => {
                     setSortMode("score");
                     setPage(1);
                   }}
                 >
-                  Highest Match Score
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    Highest Match Score
+                  </span>
+                  {sortMode === "score" && <span className="text-[#c8f542] text-xs font-bold">✓</span>}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -953,6 +989,8 @@ export default function Home() {
                 experienceLevel={job.experience_level}
                 corridor={job.corridor}
                 city={job.city}
+                postedAt={job.posted_at}
+                discoveredAt={job.discovered_at}
                 onPrepareApplication={async () => {
                   try {
                     await api.post("/applications", { job_id: job.id });

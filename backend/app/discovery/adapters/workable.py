@@ -19,9 +19,9 @@ from app.core.http import SafeHTTPClient
 
 logger = logging.getLogger(__name__)
 
-# Pattern: apply.workable.com/{token} or {token}.workable.com or apply.workable.com/api/v3/accounts/{token}/jobs
+# Pattern: [apply.]workable.com/{token} or {token}.workable.com or apply.workable.com/api/v3/accounts/{token}/jobs
 _WORKABLE_BOARD_PATTERN = re.compile(
-    r"^(?:https?://)?(?:apply\.workable\.com/(?:api/v3/accounts/)?([a-zA-Z0-9_-]+)|([a-zA-Z0-9_-]+)\.workable\.com)(?:/.*)?$",
+    r"^(?:https?://)?(?:(?:apply\.)?workable\.com/(?:api/v3/accounts/)?([a-zA-Z0-9_-]+)|([a-zA-Z0-9_-]+)\.workable\.com)(?:/.*)?$",
     re.IGNORECASE,
 )
 
@@ -178,6 +178,16 @@ class WorkableAdapter(ATSAdapter):
                     "experience": j.get("experience", "")
                 }
 
+                posted_dt = None
+                published_str = j.get("published_on") or j.get("created_at")
+                if published_str and isinstance(published_str, str):
+                    try:
+                        from datetime import datetime
+                        clean_ts = published_str.replace("Z", "+00:00")
+                        posted_dt = datetime.fromisoformat(clean_ts)
+                    except Exception:
+                        pass
+
                 raw_jobs.append(
                     RawJob(
                         provenance=DiscoveryProvenanceDTO(
@@ -196,6 +206,7 @@ class WorkableAdapter(ATSAdapter):
                         description=description[:50000] if description else None,
                         employment_type=employment_type[:128] if employment_type else None,
                         remote_status=remote_status[:64] if remote_status else None,
+                        posted_at=posted_dt,
                         provider_metadata=provider_metadata
                     )
                 )

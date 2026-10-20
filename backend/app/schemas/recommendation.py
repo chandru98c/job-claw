@@ -30,6 +30,11 @@ class JobRecommendationResponse(JobRecommendationBase):
     remote_status: Optional[str] = None
     matched_skills: Optional[List[str]] = None
     experience_level: Optional[str] = None
+    education_level: Optional[str] = None
+    role_category: Optional[str] = None
+    corridor: Optional[str] = None
+    city: Optional[str] = None
+    posted_at: Optional[datetime] = None
     
     first_seen_at: datetime
     surfaced_at: Optional[datetime] = None

@@ -33,20 +33,32 @@ async def get_recommendations(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=50),
     scope: str = Query("all", description="'all', 'local', or 'remote'"),
+    role: Optional[str] = Query(None),
+    degree: Optional[str] = Query(None),
+    experience_level: Optional[str] = Query(None),
+    location: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Returns personalized recommendations.
-    If refresh=True, or if no active recommendations exist, dynamically mines
-    the 170k+ job pool for hyper-relevant matches tailored to candidate location & skills.
+    If refresh=True or custom filters are specified, dynamically mines
+    the job pool for hyper-relevant matches tailored to candidate location, degree, and skills.
     """
-    if refresh:
+    has_filters = bool(role or degree or experience_level or location or q)
+
+    if refresh or has_filters:
         return await get_or_generate_recommendations(
             db=db,
             profile=profile,
             limit=limit,
             page=page,
             scope=scope,
+            role=role,
+            degree=degree,
+            experience_level=experience_level,
+            location=location,
+            q=q,
             force_refresh=True
         )
 
@@ -63,14 +75,17 @@ async def get_recommendations(
         query = query.where(JobRecommendation.state != RecommendationState.DISMISSED)
 
     if scope == "local":
-        query = query.join(Job).where(
-            Job.location.ilike("%chennai%") | 
-            Job.location.ilike("%tamil nadu%") | 
-            Job.location.ilike("%guindy%") | 
-            Job.location.ilike("%mepz%") |
-            Job.location.ilike("%omr%") |
-            Job.location.ilike("%siruseri%")
-        )
+        pref_locs = profile.preferred_locations or []
+        if profile.location:
+            pref_locs = list(pref_locs) + [profile.location]
+        if not pref_locs:
+            pref_locs = ["chennai", "bengaluru", "hyderabad", "coimbatore"]
+            
+        from app.services.search import _location_variants
+        all_variants = []
+        for l in pref_locs:
+            all_variants.extend(_location_variants(l))
+        query = query.join(Job).where(or_(*[Job.location.ilike(f"%{v}%") for v in set(all_variants)]))
     elif scope == "remote":
         query = query.join(Job).where(
             Job.remote_status.ilike("%remote%") | 
@@ -106,6 +121,11 @@ async def get_recommendations(
             limit=limit,
             page=page,
             scope=scope,
+            role=role,
+            degree=degree,
+            experience_level=experience_level,
+            location=location,
+            q=q,
             force_refresh=True
         )
 
@@ -120,12 +140,17 @@ async def refresh_recommendations(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=50),
     scope: str = Query("all"),
+    role: Optional[str] = Query(None),
+    degree: Optional[str] = Query(None),
+    experience_level: Optional[str] = Query(None),
+    location: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
     profile: Profile = Depends(get_valid_profile),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Dedicated endpoint to fetch a brand new set of job recommendations
-    from the 170,000+ job registry matching the user profile.
+    matching the user profile with custom filters.
     """
     return await get_or_generate_recommendations(
         db=db,
@@ -133,6 +158,11 @@ async def refresh_recommendations(
         limit=limit,
         page=page,
         scope=scope,
+        role=role,
+        degree=degree,
+        experience_level=experience_level,
+        location=location,
+        q=q,
         force_refresh=True
     )
 

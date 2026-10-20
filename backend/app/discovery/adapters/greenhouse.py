@@ -277,9 +277,16 @@ class GreenhouseAdapter(ATSAdapter):
                     ]
                     provider_meta["departments"] = dept_names
 
+                posted_dt = None
                 updated_at = job_data.get("updated_at")
                 if updated_at:
                     provider_meta["updated_at"] = str(updated_at)[:64]
+                    try:
+                        from datetime import datetime
+                        clean_ts = str(updated_at).replace("Z", "+00:00")
+                        posted_dt = datetime.fromisoformat(clean_ts)
+                    except Exception:
+                        pass
 
                 raw_job = RawJob(
                     provenance=DiscoveryProvenanceDTO(
@@ -296,6 +303,7 @@ class GreenhouseAdapter(ATSAdapter):
                     company=board_token[:MAX_COMPANY_LEN],
                     location=location,
                     description=description,
+                    posted_at=posted_dt,
                     provider_metadata=provider_meta if provider_meta else None,
                 )
                 raw_jobs.append(raw_job)

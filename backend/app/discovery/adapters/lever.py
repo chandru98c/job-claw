@@ -204,6 +204,15 @@ class LeverAdapter(ATSAdapter):
                     "allLocations": categories.get("allLocations", [])[:5],
                 }
 
+                posted_dt = None
+                created_at_ms = j.get("createdAt")
+                if created_at_ms and isinstance(created_at_ms, (int, float)):
+                    try:
+                        from datetime import datetime, timezone
+                        posted_dt = datetime.fromtimestamp(created_at_ms / 1000.0, tz=timezone.utc)
+                    except Exception:
+                        pass
+
                 raw_jobs.append(
                     RawJob(
                         provenance=DiscoveryProvenanceDTO(
@@ -222,6 +231,7 @@ class LeverAdapter(ATSAdapter):
                         description=description[:50000] if description else None,
                         employment_type=employment_type[:128] if employment_type else None,
                         remote_status=remote_status[:64] if remote_status else None,
+                        posted_at=posted_dt,
                         provider_metadata=provider_metadata
                     )
                 )

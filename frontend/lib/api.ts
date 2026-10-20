@@ -13,7 +13,7 @@ export class ApiError extends Error {
 
 async function request<T>(endpoint: string, options: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
-  const timeoutMs = options.timeoutMs ?? 15000;
+  const timeoutMs = options.timeoutMs ?? 30000;
   
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -64,18 +64,18 @@ async function request<T>(endpoint: string, options: RequestInit & { timeoutMs?:
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err.name === "AbortError" && !options.signal?.aborted) {
-      throw new ApiError(408, "Request timed out after 15 seconds. Please refresh or try again.");
+      throw new ApiError(408, `Request timed out after ${Math.round(timeoutMs / 1000)} seconds. Please refresh or try again.`);
     }
     throw err;
   }
 }
 
 export const api = {
-  get: <T>(endpoint: string, options?: RequestInit) => request<T>(endpoint, { ...options, method: "GET" }),
-  post: <T>(endpoint: string, body?: any, options?: RequestInit) => request<T>(endpoint, { ...options, method: "POST", body: body ? JSON.stringify(body) : undefined }),
-  put: <T>(endpoint: string, body?: any, options?: RequestInit) => request<T>(endpoint, { ...options, method: "PUT", body: body ? JSON.stringify(body) : undefined }),
-  patch: <T>(endpoint: string, body?: any, options?: RequestInit) => request<T>(endpoint, { ...options, method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
-  delete: <T>(endpoint: string, options?: RequestInit) => request<T>(endpoint, { ...options, method: "DELETE" }),
+  get: <T>(endpoint: string, options?: RequestInit & { timeoutMs?: number }) => request<T>(endpoint, { ...options, method: "GET" }),
+  post: <T>(endpoint: string, body?: any, options?: RequestInit & { timeoutMs?: number }) => request<T>(endpoint, { ...options, method: "POST", body: body ? JSON.stringify(body) : undefined }),
+  put: <T>(endpoint: string, body?: any, options?: RequestInit & { timeoutMs?: number }) => request<T>(endpoint, { ...options, method: "PUT", body: body ? JSON.stringify(body) : undefined }),
+  patch: <T>(endpoint: string, body?: any, options?: RequestInit & { timeoutMs?: number }) => request<T>(endpoint, { ...options, method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
+  delete: <T>(endpoint: string, options?: RequestInit & { timeoutMs?: number }) => request<T>(endpoint, { ...options, method: "DELETE" }),
   
   // Expose the base URL if needed by SSE
   baseUrl: API_BASE

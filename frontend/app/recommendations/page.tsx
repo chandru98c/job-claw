@@ -14,20 +14,25 @@ import {
   CheckCircle2, 
   RefreshCw, 
   Compass, 
-  Layers, 
   ChevronRight, 
   ChevronLeft,
   RotateCcw,
   SlidersHorizontal,
   Code2,
   GraduationCap,
-  Globe2
+  Globe2,
+  Search,
+  Briefcase,
+  Banknote,
+  Clock,
+  FilterX
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-type RecommendationItem = {
+export type RecommendationItem = {
   id: string;
   profile_id: string;
   job_id: string;
@@ -35,6 +40,11 @@ type RecommendationItem = {
   reasons?: string[];
   matched_skills?: string[];
   experience_level?: string;
+  education_level?: string;
+  role_category?: string;
+  corridor?: string;
+  city?: string;
+  posted_at?: string;
   state: "NEW" | "SEEN" | "SAVED" | "DISMISSED" | "APPLIED";
   title?: string;
   company_name?: string;
@@ -45,6 +55,7 @@ type RecommendationItem = {
   salary_min?: number;
   salary_max?: number;
   first_seen_at?: string;
+  created_at?: string;
 };
 
 type ProfileInfo = {
@@ -59,6 +70,116 @@ type ProfileInfo = {
   preferred_locations?: string[];
   preferred_job_types?: string[];
 };
+
+const ROLES = [
+  { id: "", label: "All Roles" },
+  { id: "software_engineer", label: "Software Engineer" },
+  { id: "fullstack", label: "Full Stack" },
+  { id: "backend", label: "Backend" },
+  { id: "frontend", label: "Frontend" },
+  { id: "data_ai", label: "Data & AI" },
+  { id: "devops_cloud", label: "DevOps & Cloud" },
+  { id: "qa_testing", label: "QA & Testing" },
+  { id: "mobile", label: "Mobile" },
+];
+
+const DEGREES = [
+  { id: "", label: "All Degrees" },
+  { id: "MCA", label: "🎓 MCA" },
+  { id: "B.Tech", label: "🎓 B.Tech / BE" },
+  { id: "M.Tech", label: "🎓 M.Tech" },
+  { id: "BCA", label: "🎓 BCA" },
+  { id: "Any Graduate", label: "🎓 Any Graduate" },
+];
+
+const EXPERIENCES = [
+  { id: "", label: "All Experience" },
+  { id: "fresher", label: "🌱 Fresher (0 Yrs)" },
+  { id: "junior", label: "Junior (1-3 Yrs)" },
+  { id: "mid", label: "Mid-Level (3-5 Yrs)" },
+  { id: "senior", label: "Senior (5+ Yrs)" },
+];
+
+const TARGET_HUBS = [
+  { id: "", label: "All Tech Hubs" },
+  { id: "chennai", label: "Chennai" },
+  { id: "omr", label: "OMR / Siruseri" },
+  { id: "guindy", label: "Guindy / MEPZ" },
+  { id: "porur", label: "DLF Porur" },
+  { id: "bangalore", label: "Bengaluru" },
+  { id: "whitefield", label: "Whitefield" },
+  { id: "electronic_city", label: "Electronic City" },
+  { id: "hyderabad", label: "Hyderabad" },
+  { id: "hitec_city", label: "HITEC City" },
+  { id: "coimbatore", label: "Coimbatore" },
+  { id: "pune", label: "Pune" },
+  { id: "delhi", label: "Delhi NCR" },
+  { id: "mumbai", label: "Mumbai" },
+  { id: "remote", label: "Remote" },
+];
+
+const ROLE_LABELS: Record<string, { label: string; color: string }> = {
+  software_engineer: { label: "Software Engineer", color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  frontend: { label: "Frontend", color: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" },
+  backend: { label: "Backend", color: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" },
+  fullstack: { label: "Full Stack", color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
+  data_ai: { label: "Data & AI", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  devops_cloud: { label: "DevOps & Cloud", color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  qa_testing: { label: "QA & Testing", color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  mobile: { label: "Mobile", color: "bg-pink-500/10 text-pink-400 border-pink-500/20" },
+};
+
+function formatExpBadge(exp?: string | null) {
+  if (!exp) return null;
+  const l = exp.toLowerCase();
+  if (l.includes("fresher") || l.includes("entry") || l.includes("0 yr") || l.includes("intern")) {
+    return { label: "🌱 Fresher (0 Yrs)", color: "bg-lime-500/15 text-[#c8f542] border-[#c8f542]/30 font-semibold" };
+  }
+  if (l.includes("junior") || l.includes("1-3") || l.includes("associate")) {
+    return { label: "Junior (1-3 Yrs)", color: "bg-sky-500/10 text-sky-400 border-sky-500/20 font-medium" };
+  }
+  if (l.includes("mid") || l.includes("3-5")) {
+    return { label: "Mid-Level (3-5 Yrs)", color: "bg-purple-500/10 text-purple-400 border-purple-500/20 font-medium" };
+  }
+  if (l.includes("senior") || l.includes("5+") || l.includes("lead") || l.includes("principal")) {
+    return { label: "Senior (5+ Yrs)", color: "bg-rose-500/10 text-rose-400 border-rose-500/20 font-medium" };
+  }
+  return { label: exp, color: "bg-zinc-800 text-zinc-300 border-zinc-700 font-medium" };
+}
+
+function formatSalary(min?: number | null, max?: number | null): string | null {
+  if (!min && !max) return null;
+  const formatLakh = (val: number) => {
+    const lpa = val / 100000;
+    return lpa % 1 === 0 ? `${lpa}` : `${lpa.toFixed(1)}`;
+  };
+  if (min && min >= 100000) {
+    if (min && max) return `₹${formatLakh(min)} - ${formatLakh(max)} LPA`;
+    if (min) return `₹${formatLakh(min)}+ LPA`;
+    if (max) return `Up to ₹${formatLakh(max)} LPA`;
+  }
+  return null;
+}
+
+function formatTimeAgo(dateStr?: string | null): string {
+  if (!dateStr) return "Recently";
+  try {
+    const dt = new Date(dateStr);
+    const diff = Math.floor((Date.now() - dt.getTime()) / 1000);
+    if (diff < 60) return "Just now";
+    const minutes = Math.floor(diff / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks < 4) return `${weeks}w ago`;
+    return `${Math.floor(days / 30)}mo ago`;
+  } catch {
+    return "Recently";
+  }
+}
 
 function RecommendationCard({ 
   rec, 
@@ -93,15 +214,13 @@ function RecommendationCard({
     }
   };
 
-  const isLocalChennai = rec.location && (
-    rec.location.toLowerCase().includes("chennai") || 
-    rec.location.toLowerCase().includes("guindy") || 
-    rec.location.toLowerCase().includes("mepz") ||
-    rec.location.toLowerCase().includes("tamil nadu")
-  );
-
   const isRemote = (rec.remote_status && rec.remote_status.toLowerCase().includes("remote")) || 
                    (rec.location && rec.location.toLowerCase().includes("remote"));
+
+  const expBadge = formatExpBadge(rec.experience_level);
+  const salaryStr = formatSalary(rec.salary_min, rec.salary_max);
+  const roleBadge = rec.role_category ? ROLE_LABELS[rec.role_category] : null;
+  const timeDisplay = formatTimeAgo(rec.posted_at || rec.first_seen_at || rec.created_at);
 
   const handleCardClick = () => {
     if (rec.apply_url) {
@@ -121,9 +240,9 @@ function RecommendationCard({
 
       <div className="flex-1 min-w-0">
         {/* Top Badges */}
-        <div className="flex flex-wrap items-center gap-2.5 mb-2.5">
+        <div className="flex flex-wrap items-center gap-2 mb-2.5">
           {/* Match Score */}
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-mono font-bold text-xs ${
+          <span className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full font-mono font-bold text-xs ${
             rec.score >= 90 
               ? "bg-[#c8f542]/15 border border-[#c8f542]/40 text-[#c8f542]" 
               : "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
@@ -132,12 +251,28 @@ function RecommendationCard({
             {rec.score}% Match
           </span>
 
+          {/* Time Ago */}
+          <span className={`inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-full border ${
+            rec.posted_at
+              ? "bg-[#c8f542]/10 text-[#c8f542] border-[#c8f542]/30"
+              : "bg-white/[0.04] text-zinc-400 border-white/10"
+          }`}>
+            <Clock className={`w-3 h-3 ${rec.posted_at ? "text-[#c8f542]" : "text-zinc-500"}`} />
+            {rec.posted_at ? `Posted ${timeDisplay}` : `Found ${timeDisplay}`}
+          </span>
+
+          {/* Corridor / Hub Badge */}
+          {rec.corridor && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-amber-400/10 border-amber-400/25 text-amber-300">
+              <MapPin className="w-3 h-3" />
+              {rec.corridor}
+            </span>
+          )}
+
           {/* Location Badge */}
-          {rec.location && (
+          {rec.location && !rec.corridor && (
             <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
-              isLocalChennai 
-                ? "bg-[#c8f542]/10 border-[#c8f542]/30 text-[#c8f542]" 
-                : isRemote
+              isRemote
                 ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
                 : "bg-white/[0.05] border-white/10 text-zinc-300"
             }`}>
@@ -162,16 +297,33 @@ function RecommendationCard({
             </span>
           )}
 
+          {/* Degree Badge */}
+          {rec.education_level && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-0.5 rounded-full border bg-white/[0.06] text-zinc-300 border-white/10">
+              <GraduationCap className="w-3 h-3 text-[#c8f542]" />
+              {rec.education_level}
+            </span>
+          )}
+
+          {/* Role Badge */}
+          {roleBadge && (
+            <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full border ${roleBadge.color}`}>
+              {roleBadge.label}
+            </span>
+          )}
+
           {/* Experience Level Badge */}
-          {rec.experience_level && (
-            <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
-              rec.experience_level.toLowerCase().includes("fresher") || rec.experience_level.toLowerCase().includes("entry")
-                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-                : rec.experience_level.toLowerCase().includes("junior")
-                ? "bg-blue-500/10 border-blue-500/30 text-blue-300"
-                : "bg-purple-500/10 border-purple-500/30 text-purple-300"
-            }`}>
-              🌱 {rec.experience_level}
+          {expBadge && (
+            <span className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border ${expBadge.color}`}>
+              {expBadge.label}
+            </span>
+          )}
+
+          {/* Salary Badge */}
+          {salaryStr && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+              <Banknote className="w-3 h-3" />
+              {salaryStr}
             </span>
           )}
 
@@ -286,13 +438,19 @@ export default function RecommendationsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Controls
+  // Interactive Filter Controls
   const [scope, setScope] = useState<string>("all"); // 'all', 'local', 'remote', 'saved'
+  const [q, setQ] = useState<string>("");
+  const [role, setRole] = useState<string>("");
+  const [degree, setDegree] = useState<string>("");
+  const [experience, setExperience] = useState<string>("");
+  const [targetLocation, setTargetLocation] = useState<string>("");
+  
   const [page, setPage] = useState<number>(1);
   const [refreshCount, setRefreshCount] = useState<number>(0);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
-  // Load profile info for context
+  // Load profile info for candidate context
   useEffect(() => {
     async function loadProfile() {
       try {
@@ -310,7 +468,7 @@ export default function RecommendationsPage() {
     loadProfile();
   }, []);
 
-  // Fetch recommendations
+  // Fetch recommendations with full filter parameters
   const loadRecommendations = useCallback(async (
     targetPage: number = 1, 
     targetScope: string = "all", 
@@ -326,17 +484,28 @@ export default function RecommendationsPage() {
     try {
       let data: RecommendationItem[] = [];
 
+      const params = new URLSearchParams();
+      params.append("page", targetPage.toString());
+      params.append("limit", "15");
+      params.append("scope", targetScope);
+
+      if (q.trim()) params.append("q", q.trim());
+      if (role) params.append("role", role);
+      if (degree) params.append("degree", degree);
+      if (experience) params.append("experience_level", experience);
+      if (targetLocation) params.append("location", targetLocation);
+
       if (targetScope === "saved") {
         data = await api.get<RecommendationItem[]>("/recommendations?state=SAVED");
       } else if (isForceRefresh) {
         data = await api.post<RecommendationItem[]>(
-          `/recommendations/refresh?page=${targetPage}&limit=15&scope=${targetScope}`
+          `/recommendations/refresh?${params.toString()}`
         );
-        setFeedbackMessage(`Found ${data.length} fresh roles matching your stack!`);
+        setFeedbackMessage(`Discovered ${data.length} fresh roles matching your stack!`);
         setTimeout(() => setFeedbackMessage(null), 3500);
       } else {
         data = await api.get<RecommendationItem[]>(
-          `/recommendations?page=${targetPage}&limit=15&scope=${targetScope}`
+          `/recommendations?${params.toString()}`
         );
       }
 
@@ -348,12 +517,29 @@ export default function RecommendationsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [q, role, degree, experience, targetLocation]);
 
-  // Initial load
+  // Initial and reactive load on filter changes
   useEffect(() => {
     loadRecommendations(1, scope, false);
-  }, [scope, loadRecommendations]);
+  }, [scope, role, degree, experience, targetLocation, loadRecommendations]);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      loadRecommendations(1, scope, true);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setQ("");
+    setRole("");
+    setDegree("");
+    setExperience("");
+    setTargetLocation("");
+    setScope("all");
+  };
+
+  const hasActiveFilters = Boolean(q || role || degree || experience || targetLocation || scope !== "all");
 
   // Click handler for "Discover New Set"
   const handleDiscoverNewSet = () => {
@@ -407,7 +593,7 @@ export default function RecommendationsPage() {
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Roles matched to your candidate profile and target hubs.
+            Personalized positions matched to your candidate profile with 100% accurate degree & experience filters.
           </p>
         </div>
 
@@ -463,12 +649,93 @@ export default function RecommendationsPage() {
         </div>
       )}
 
+      {/* Interactive Filter Bar */}
+      <div className="mb-6 p-4 rounded-[22px] bg-[#121216]/80 border border-white/[0.08] space-y-3.5">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Keyword Search */}
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search stack, title or company..."
+              className="pl-9 h-10 bg-white/[0.03] border-white/10 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:border-[#c8f542]/50"
+            />
+          </div>
+
+          {/* Role Filter */}
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="h-10 px-3 bg-[#18181f] border border-white/10 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-[#c8f542]/50"
+          >
+            {ROLES.map((r) => (
+              <option key={r.id} value={r.id} className="bg-[#18181f] text-zinc-200">
+                {r.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Degree Filter */}
+          <select
+            value={degree}
+            onChange={(e) => setDegree(e.target.value)}
+            className="h-10 px-3 bg-[#18181f] border border-white/10 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-[#c8f542]/50"
+          >
+            {DEGREES.map((d) => (
+              <option key={d.id} value={d.id} className="bg-[#18181f] text-zinc-200">
+                {d.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Experience Filter */}
+          <select
+            value={experience}
+            onChange={(e) => setExperience(e.target.value)}
+            className="h-10 px-3 bg-[#18181f] border border-white/10 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-[#c8f542]/50"
+          >
+            {EXPERIENCES.map((exp) => (
+              <option key={exp.id} value={exp.id} className="bg-[#18181f] text-zinc-200">
+                {exp.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Target Location / Hub Filter */}
+          <select
+            value={targetLocation}
+            onChange={(e) => setTargetLocation(e.target.value)}
+            className="h-10 px-3 bg-[#18181f] border border-white/10 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-[#c8f542]/50"
+          >
+            {TARGET_HUBS.map((h) => (
+              <option key={h.id} value={h.id} className="bg-[#18181f] text-zinc-200">
+                {h.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Clear Filters Button */}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              onClick={handleClearFilters}
+              className="h-10 px-3 text-xs text-zinc-400 hover:text-white hover:bg-white/5 rounded-xl gap-1.5"
+            >
+              <FilterX className="w-3.5 h-3.5" />
+              Clear
+            </Button>
+          )}
+        </div>
+      </div>
+
       {/* Scope Filter Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-2 border-b border-white/[0.06]">
         <div className="flex items-center gap-2 overflow-x-auto">
           {[
             { id: "all", label: "All Profile Matches" },
-            { id: "local", label: "Chennai / Local First" },
+            { id: "local", label: "Target Hubs First" },
             { id: "remote", label: "Remote & Hybrid" },
             { id: "saved", label: "Saved Roles" },
           ].map(tab => (
@@ -518,9 +785,9 @@ export default function RecommendationsPage() {
               <Compass className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-base font-bold text-white mb-1">No roles found in this filter view</h4>
+              <h4 className="text-base font-bold text-white mb-1">No positions found in this filter view</h4>
               <p className="text-xs text-zinc-400 max-w-md">
-                You’ve reviewed all items currently in this scope. Click below to pull a fresh recommendation set.
+                Try adjusting your search criteria or click below to discover fresh personalized roles.
               </p>
             </div>
             <div className="flex gap-3">
@@ -528,8 +795,8 @@ export default function RecommendationsPage() {
                 <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
                 Discover Fresh Roles
               </Button>
-              <Button onClick={() => setScope("all")} variant="outline" className="rounded-full border-white/10 text-xs">
-                View All Matches
+              <Button onClick={handleClearFilters} variant="outline" className="rounded-full border-white/10 text-xs">
+                Clear Filters
               </Button>
             </div>
           </div>

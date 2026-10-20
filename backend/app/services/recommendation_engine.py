@@ -55,7 +55,7 @@ def _calculate_match_score(
 ) -> tuple[int, List[str]]:
     """
     Computes an accurate, deterministic match score (0-99%) 
-    and returns human-readable justification reasons.
+    and returns human-readable justification reasons aligned with candidate preferences.
     """
     score = 55
     reasons: List[str] = []
@@ -66,23 +66,32 @@ def _calculate_match_score(
     job_desc = (job.description or "").lower()
     
     pref_locs = [p.lower().strip() for p in (profile.preferred_locations or [])]
-    user_loc = (profile.location or "").lower()
+    user_loc = (profile.location or "").lower().strip()
+    all_user_locs = [l for l in pref_locs if l]
+    if user_loc and user_loc not in all_user_locs:
+        all_user_locs.append(user_loc)
     
-    # 1. Location Matching (Highest Priority)
-    is_local_chennai = any(k in job_loc for k in ["chennai", "guindy", "mepz", "siruseri", "omr", "tamil nadu"])
+    from app.services.search import _location_variants
+    
+    # 1. Location Matching (Aligned to Candidate's Specific Target Hubs)
     is_remote = "remote" in job_remote or "remote" in job_loc or "hybrid" in job_remote or "hybrid" in job_loc
-    
-    if is_local_chennai:
+    user_matched_hub = None
+    for target in all_user_locs:
+        target_variants = _location_variants(target)
+        if any(v in job_loc for v in target_variants):
+            user_matched_hub = target.capitalize()
+            break
+            
+    if user_matched_hub:
         score += 28
-        reasons.append("Exact Regional Fit: Chennai Tech Hub")
+        reasons.append(f"Target Hub Fit: {user_matched_hub}")
     elif is_remote:
-        score += 20
+        score += 22
         reasons.append("Work Flexibility: Remote / Hybrid Eligible")
-    elif any(loc in job_loc for loc in ["bengaluru", "bangalore", "hyderabad", "pune", "india"]):
+    elif any(loc in job_loc for loc in ["chennai", "bengaluru", "bangalore", "hyderabad", "coimbatore", "pune", "delhi", "mumbai", "india"]):
         score += 15
-        reasons.append("Indian Tech Corridor (Bangalore / Hyderabad)")
+        reasons.append("Major Indian Tech Corridor")
     else:
-        # Penalize foreign on-site jobs
         score -= 20
         
     # 2. Skill & Stack Overlap
@@ -106,9 +115,10 @@ def _calculate_match_score(
         
     # 4. Education & Qualification
     edu = (profile.education or "").lower()
-    if edu and any(e in job_desc or e in (job.education_level or "").lower() for e in ["mca", "b.tech", "btech", "degree", "graduate", "computer science"]):
-        score += 6
-        reasons.append("Degree Alignment: MCA / Technical Degree")
+    job_edu = (job.education_level or "").lower()
+    if edu and any(e in job_desc or e in job_edu for e in ["mca", "b.tech", "btech", "degree", "graduate", "computer science"]):
+        score += 8
+        reasons.append(f"Degree Alignment: {profile.education or 'Technical Degree'}")
         
     # 5. Experience & Seniority Alignment
     cand_exp_level = (profile.experience_level or "").lower().strip()
@@ -122,41 +132,29 @@ def _calculate_match_score(
         "0-1" in cand_exp_text
     )
     
-    job_exp_level = (job.experience_level or "").lower().strip()
-    senior_keywords = ["senior", "lead", "architect", "principal", "manager", "director", "staff engineer", "vp", "head of"]
-    is_senior_job = (
-        job_exp_level in ["senior", "lead", "principal", "mid-senior"] or
-        any(s in job_title for s in senior_keywords) or
-        any(s in job_desc for s in ["5+ years", "6+ years", "7+ years", "8+ years", "10+ years"])
-    )
-    is_fresher_job = (
-        job_exp_level in ["fresher", "entry", "intern", "junior"] or
-        any(s in job_title for s in ["fresher", "intern", "trainee", "graduate", "junior", "associate", "entry level"]) or
-        any(s in job_desc for s in ["freshers can apply", "0-1 year", "0-1 yr", "0 to 1 year", "entry level", "graduate trainee", "campus"])
-    )
-    
+    job_exp = (job.experience_level or "").lower().strip()
     if is_fresher_cand:
-        if is_fresher_job:
-            score += 15
-            reasons.append("Experience Fit: Fresher & Entry-Level Friendly (0-1 Yrs)")
-        elif is_senior_job:
-            score -= 18
+        if job_exp in ["fresher"] or any(s in job_title for s in ["fresher", "intern", "trainee", "entry"]):
+            score += 16
+            reasons.append("Experience Fit: Fresher Friendly (0-1 Yrs)")
+        elif job_exp in ["senior"] or any(s in job_title for s in ["senior", "lead", "architect", "principal"]):
+            score -= 22
             reasons.append("Senior Role (5+ Yrs Required)")
         else:
             score += 5
-            reasons.append("Early Career Software Role")
+            reasons.append("Early Career Position")
     elif cand_exp_level in ["senior", "lead"]:
-        if is_senior_job:
-            score += 15
+        if job_exp == "senior" or any(s in job_title for s in ["senior", "lead", "architect", "principal"]):
+            score += 16
             reasons.append("Seniority Alignment: Senior / Lead Engineer")
-        elif is_fresher_job:
+        elif job_exp == "fresher":
+            score -= 15
+    else: # Junior (1-3 yrs) or Mid (3-5 yrs)
+        if job_exp in ["junior", "mid"]:
+            score += 14
+            reasons.append("Experience Fit: Aligned with Background (1-3 Yrs)")
+        elif job_exp == "senior":
             score -= 12
-    else: # Junior / Mid candidate
-        if is_fresher_job or not is_senior_job:
-            score += 10
-            reasons.append("Experience Fit: Aligned with Background")
-        else:
-            score -= 10
 
     # Cap between 68% and 98%
     final_score = max(min(score, 98), 68)
@@ -172,116 +170,108 @@ async def fetch_recommended_jobs(
     limit: int = 15,
     offset: int = 0,
     scope: str = "all", # 'all', 'local', 'remote'
+    role: Optional[str] = None,
+    degree: Optional[str] = None,
+    experience_level: Optional[str] = None,
+    location: Optional[str] = None,
+    q: Optional[str] = None,
     exclude_job_ids: Optional[Set[str]] = None
 ) -> List[Dict[str, Any]]:
     """
-    Mines canonical jobs directly from DB matching candidate preferences with fast indexing.
+    Mines canonical jobs directly from DB matching candidate preferences with fast indexing
+    and 100% accurate structured filters.
     """
+    from app.services.search import (
+        _location_variants,
+        _build_degree_condition,
+        _build_experience_condition,
+        _build_role_condition
+    )
+
     if exclude_job_ids is None:
         exclude_job_ids = set()
 
-    # Construct location conditions based on requested scope
-    loc_conditions = []
-    
+    conditions = [
+        Job.status.in_([JobStatus.ACTIVE, JobStatus.VERIFYING]),
+        Job.canonical_apply_url.isnot(None),
+        Job.canonical_apply_url != ""
+    ]
+
+    # Scope handling (Candidate-Centric)
     if scope == "local":
-        loc_conditions.append(
-            or_(
-                Job.location.ilike("%chennai%"),
-                Job.location.ilike("%tamil nadu%"),
-                Job.location.ilike("%guindy%"),
-                Job.location.ilike("%mepz%"),
-                Job.location.ilike("%siruseri%"),
-                Job.location.ilike("%omr%")
-            )
-        )
+        pref_locs = profile.preferred_locations or []
+        if profile.location:
+            pref_locs = list(pref_locs) + [profile.location]
+        if not pref_locs:
+            pref_locs = ["chennai", "bengaluru", "hyderabad", "coimbatore"]
+            
+        all_variants = []
+        for l in pref_locs:
+            all_variants.extend(_location_variants(l))
+        conditions.append(or_(*[Job.location.ilike(f"%{v}%") for v in set(all_variants)]))
     elif scope == "remote":
-        loc_conditions.append(
+        conditions.append(
             or_(
                 Job.remote_status.ilike("%remote%"),
                 Job.location.ilike("%remote%"),
                 Job.remote_status.ilike("%hybrid%")
             )
         )
-    else: # "all"
-        loc_conditions.append(
-            or_(
-                Job.location.ilike("%chennai%"),
-                Job.location.ilike("%tamil nadu%"),
-                Job.location.ilike("%guindy%"),
-                Job.location.ilike("%mepz%"),
-                Job.location.ilike("%siruseri%"),
-                Job.location.ilike("%omr%"),
-                Job.remote_status.ilike("%remote%"),
-                Job.location.ilike("%remote%"),
-                Job.location.ilike("%bengaluru%"),
-                Job.location.ilike("%bangalore%"),
-                Job.location.ilike("%hyderabad%"),
-                Job.location.ilike("%india%")
-            )
-        )
 
-    # Technical roles filter
-    role_condition = or_(
-        Job.title.ilike("%software%"),
-        Job.title.ilike("%developer%"),
-        Job.title.ilike("%engineer%"),
-        Job.title.ilike("%python%"),
-        Job.title.ilike("%react%"),
-        Job.title.ilike("%frontend%"),
-        Job.title.ilike("%backend%"),
-        Job.title.ilike("%full stack%"),
-        Job.title.ilike("%fullstack%"),
-        Job.title.ilike("%web%"),
-        Job.title.ilike("%data%"),
-        Job.title.ilike("%stack%")
-    )
+    # User-applied interactive filters
+    if location:
+        variants = _location_variants(location)
+        conditions.append(or_(*[Job.location.ilike(f"%{v}%") for v in variants]))
 
-    stmt = (
-        select(Job)
-        .where(
-            and_(
-                *loc_conditions,
-                role_condition,
-                Job.canonical_apply_url.isnot(None),
-                Job.canonical_apply_url != ""
-            )
+    if role:
+        conditions.append(_build_role_condition(role))
+
+    if degree:
+        conditions.append(_build_degree_condition(degree))
+
+    if experience_level:
+        conditions.append(_build_experience_condition(experience_level))
+
+    if q:
+        q_clean = q.strip()
+        q_tokens = [t.strip().lower() for t in q_clean.split() if t.strip()]
+        phrase_cond = or_(
+            Job.title.ilike(f"%{q_clean}%"),
+            Job.company_name.ilike(f"%{q_clean}%"),
+            Job.location.ilike(f"%{q_clean}%"),
+            Job.education_level.ilike(f"%{q_clean}%"),
+            Job.role_category.ilike(f"%{q_clean}%")
         )
-    )
+        if len(q_tokens) > 1:
+            token_conds = []
+            for t in q_tokens:
+                token_conds.append(or_(
+                    Job.title.ilike(f"%{t}%"),
+                    Job.company_name.ilike(f"%{t}%"),
+                    Job.role_category.ilike(f"%{t}%"),
+                    Job.location.ilike(f"%{t}%"),
+                    Job.education_level.ilike(f"%{t}%")
+                ))
+            conditions.append(or_(phrase_cond, and_(*token_conds)))
+        else:
+            conditions.append(phrase_cond)
 
     if exclude_job_ids:
-        stmt = stmt.where(~Job.id.in_(list(exclude_job_ids)))
+        conditions.append(~Job.id.in_(list(exclude_job_ids)))
 
-    # Order priority: Experience-aligned Chennai/Local first, then Remote, then recent
-    cand_exp_level = (profile.experience_level or "").lower().strip()
-    cand_years = profile.experience_years if profile.experience_years is not None else 0.0
-    is_fresher = cand_exp_level in ["fresher", "intern", "entry"] or cand_years <= 1.0 or "fresher" in (profile.experience or "").lower()
-
-    if is_fresher:
-        case_order = text("""
-            CASE 
-                WHEN (location ILIKE '%chennai%' OR location ILIKE '%guindy%' OR location ILIKE '%mepz%')
-                     AND (experience_level ILIKE '%fresher%' OR title ILIKE '%fresher%' OR title ILIKE '%trainee%' OR title ILIKE '%intern%' OR title ILIKE '%graduate%' OR title ILIKE '%junior%' OR title ILIKE '%associate%') THEN 1
-                WHEN (remote_status ILIKE '%remote%' OR location ILIKE '%remote%')
-                     AND (experience_level ILIKE '%fresher%' OR title ILIKE '%fresher%' OR title ILIKE '%trainee%' OR title ILIKE '%intern%' OR title ILIKE '%graduate%' OR title ILIKE '%junior%' OR title ILIKE '%associate%') THEN 2
-                WHEN location ILIKE '%chennai%' OR location ILIKE '%guindy%' OR location ILIKE '%mepz%' THEN 3
-                WHEN remote_status ILIKE '%remote%' OR location ILIKE '%remote%' THEN 4
-                WHEN location ILIKE '%tamil nadu%' THEN 5
-                ELSE 6
-            END,
-            created_at DESC
-        """)
-    else:
-        case_order = text("""
-            CASE 
-                WHEN location ILIKE '%chennai%' OR location ILIKE '%guindy%' OR location ILIKE '%mepz%' THEN 1
-                WHEN remote_status ILIKE '%remote%' OR location ILIKE '%remote%' THEN 2
-                WHEN location ILIKE '%tamil nadu%' THEN 3
-                ELSE 4
-            END,
-            created_at DESC
-        """)
-
-    stmt = stmt.order_by(case_order).offset(offset).limit(limit * 2)
+    # Query strictly newest jobs first by actual posting date
+    stmt = (
+        select(Job)
+        .where(and_(*conditions))
+        .order_by(
+            Job.posted_at.desc().nullslast(),
+            desc(Job.last_source_seen_at),
+            desc(Job.created_at),
+            desc(Job.id)
+        )
+        .offset(offset)
+        .limit(limit * 2)
+    )
 
     result = await db.execute(stmt)
     jobs = result.scalars().all()
@@ -294,10 +284,9 @@ async def fetch_recommended_jobs(
         matched_skills = _extract_skills(text_blob, profile_skills)
         score, reasons = _calculate_match_score(j, profile, matched_skills)
         
-        # Friendly company fallback
+        # Clean company fallback
         clean_company = j.company_name
         if not clean_company or clean_company.lower() in ["unknown", "default"]:
-            # Extract domain from apply url
             try:
                 from urllib.parse import urlparse
                 netloc = urlparse(j.canonical_apply_url).netloc
@@ -328,43 +317,48 @@ async def get_or_generate_recommendations(
     limit: int = 15,
     page: int = 1,
     scope: str = "all",
+    role: Optional[str] = None,
+    degree: Optional[str] = None,
+    experience_level: Optional[str] = None,
+    location: Optional[str] = None,
+    q: Optional[str] = None,
     force_refresh: bool = False
 ) -> List[JobRecommendationResponse]:
     """
-    Main entry point: gets active recommendations or discovers a new set.
+    Main entry point: gets active recommendations or discovers a new set with full filter support.
     """
-    # Find existing recommendations for this profile
-    existing_stmt = (
-        select(JobRecommendation)
-        .options(selectinload(JobRecommendation.job))
-        .where(JobRecommendation.profile_id == profile.id)
-    )
-    
-    if not force_refresh:
-        # Default view: show active recommendations (NEW, SEEN, SAVED)
-        existing_stmt = existing_stmt.where(
-            JobRecommendation.state.in_([
-                RecommendationState.NEW, 
-                RecommendationState.SEEN, 
-                RecommendationState.SAVED
-            ])
-        ).order_by(JobRecommendation.score.desc())
+    has_custom_filters = bool(role or degree or experience_level or location or q)
+
+    # When custom filters are provided, always dynamically mine the matching candidates directly
+    if not force_refresh and not has_custom_filters:
+        existing_stmt = (
+            select(JobRecommendation)
+            .options(selectinload(JobRecommendation.job))
+            .where(
+                JobRecommendation.profile_id == profile.id,
+                JobRecommendation.state.in_([
+                    RecommendationState.NEW, 
+                    RecommendationState.SEEN, 
+                    RecommendationState.SAVED
+                ])
+            )
+            .order_by(JobRecommendation.score.desc())
+        )
         
         existing_result = await db.execute(existing_stmt)
         existing_recs = existing_result.scalars().all()
         
         if existing_recs and len(existing_recs) >= 5:
-            # Return existing formatted recommendations
             return [_build_response(r, r.job) for r in existing_recs[:limit]]
 
-    # If force_refresh is True OR fewer than 5 exist, generate a brand new set!
-    # Collect all job IDs already seen/dismissed to ensure pure freshness
-    seen_jobs_res = await db.execute(
-        select(JobRecommendation.job_id).where(JobRecommendation.profile_id == profile.id)
-    )
-    seen_job_ids = set(seen_jobs_res.scalars().all())
+    # Collect seen jobs to maintain novelty unless force refreshing or custom filtering
+    seen_job_ids = set()
+    if not force_refresh and not has_custom_filters:
+        seen_jobs_res = await db.execute(
+            select(JobRecommendation.job_id).where(JobRecommendation.profile_id == profile.id)
+        )
+        seen_job_ids = set(seen_jobs_res.scalars().all())
 
-    # When force_refresh is called, cycle offset based on page
     offset = (page - 1) * limit
 
     candidate_results = await fetch_recommended_jobs(
@@ -373,27 +367,35 @@ async def get_or_generate_recommendations(
         limit=limit,
         offset=offset,
         scope=scope,
-        exclude_job_ids=seen_job_ids if not force_refresh else set()
+        role=role,
+        degree=degree,
+        experience_level=experience_level,
+        location=location,
+        q=q,
+        exclude_job_ids=seen_job_ids
     )
 
     if not candidate_results and seen_job_ids:
-        # If we exhausted unseen jobs, allow recycling with newest offset
+        # Recycle with newest offset
         candidate_results = await fetch_recommended_jobs(
             db=db,
             profile=profile,
             limit=limit,
             offset=offset,
             scope=scope,
+            role=role,
+            degree=degree,
+            experience_level=experience_level,
+            location=location,
+            q=q,
             exclude_job_ids=set()
         )
 
     response_items = []
     
-    # Save newly generated recommendations into DB
     for c in candidate_results:
         j: Job = c["job"]
         
-        # Check if already in recommendations
         rec_check = await db.execute(
             select(JobRecommendation).where(
                 JobRecommendation.profile_id == profile.id,
@@ -423,7 +425,6 @@ async def get_or_generate_recommendations(
         await db.commit()
         await db.refresh(rec)
         
-        # Build enriched response
         resp_item = _build_response(rec, j, custom_company=c["company_name"], matched_skills=c.get("matched_skills"))
         response_items.append(resp_item)
 
@@ -435,6 +436,8 @@ def _build_response(
     custom_company: Optional[str] = None,
     matched_skills: Optional[List[str]] = None
 ) -> JobRecommendationResponse:
+    from app.api.jobs import _extract_corridor_and_city
+    
     item = JobRecommendationResponse.model_validate(rec)
     if job:
         item.title = job.title
@@ -445,15 +448,18 @@ def _build_response(
         item.salary_min = job.salary_min
         item.salary_max = job.salary_max
         item.remote_status = job.remote_status
-        item.experience_level = job.experience_level or (
-            "Fresher / Entry" if any(w in (job.title or "").lower() for w in ["fresher", "intern", "trainee", "junior", "graduate", "associate", "entry"]) 
-            else "Senior / Lead" if any(w in (job.title or "").lower() for w in ["senior", "lead", "architect", "principal", "manager"])
-            else "Mid / Experienced"
-        )
+        item.education_level = job.education_level
+        item.role_category = job.role_category
+        
+        corr, city = _extract_corridor_and_city(job.location)
+        item.corridor = corr
+        item.city = city
+        item.posted_at = job.posted_at or job.last_source_seen_at or job.created_at
+        item.experience_level = job.experience_level or "Junior (1-3 Yrs)"
+        
         if matched_skills:
             item.matched_skills = matched_skills
         else:
-            # Fallback extract top tech keywords from title/description
             blob = f"{job.title} {job.description or ''}"
             item.matched_skills = _extract_skills(blob, ["Python", "FastAPI", "React", "TypeScript", "PostgreSQL", "SQL", "Next.js", "TailwindCSS"])
     return item

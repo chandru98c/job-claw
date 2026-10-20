@@ -156,12 +156,13 @@ async def test_real_backend_e2e(client, async_db_session: AsyncSession, e2e_prof
         )
         await worker.main()
     
-    # 4. Verify Job is discovered and Canonicalized
-    res = await async_db_session.execute(select(Job).where(Job.title == "senior python engineer"))
+    res = await async_db_session.execute(select(Job).where(Job.title == "senior python engineer", Job.company_name == "airbnb"))
     jobs = res.scalars().all()
-    print(f"DEBUG E2E: found {len(jobs)} jobs for title 'senior python engineer'")
+    if not jobs:
+        res = await async_db_session.execute(select(Job).where(Job.title == "senior python engineer"))
+        jobs = res.scalars().all()
     assert len(jobs) >= 1
-    job = jobs[0]
+    job = next((j for j in jobs if j.company_name == "airbnb"), jobs[0])
     job_id = job.id
     print(f"DEBUG E2E: job_id is {job_id}, status is {job.status}")
     

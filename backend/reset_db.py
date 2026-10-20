@@ -2,8 +2,19 @@ import asyncio
 import asyncpg
 import os
 
+from urllib.parse import urlparse
+
 async def main():
-    conn = await asyncpg.connect(user="postgres", password="Postpass123", host="localhost", port=5432, database="jobclaw")
+    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/jobclaw")
+    clean_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+    parsed = urlparse(clean_url)
+    user = parsed.username or os.getenv("PGUSER", "postgres")
+    password = parsed.password or os.getenv("PGPASSWORD", "postgres")
+    host = parsed.hostname or os.getenv("PGHOST", "localhost")
+    port = parsed.port or int(os.getenv("PGPORT", "5432"))
+    db_name = (parsed.path.lstrip("/") if parsed.path else "") or "jobclaw"
+
+    conn = await asyncpg.connect(user=user, password=password, host=host, port=port, database=db_name)
     try:
         await conn.execute("DROP SCHEMA public CASCADE;")
         await conn.execute("CREATE SCHEMA public;")

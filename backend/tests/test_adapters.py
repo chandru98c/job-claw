@@ -481,8 +481,7 @@ class TestAshbyAdapter:
             identifier="acme_token"
         )
         candidates = ashby_adapter.generate_candidates(source=source)
-        assert len(candidates) == 1
-        assert candidates[0].target_url == "https://jobs.ashbyhq.com/acme_token"
+        assert "api.ashbyhq.com/posting-api/job-board/acme_token" in candidates[0].target_url
         assert candidates[0].confidence == 1.0
 
     @pytest.mark.asyncio

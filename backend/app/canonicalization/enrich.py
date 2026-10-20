@@ -1,17 +1,120 @@
 import re
 from typing import Optional, Tuple, Dict, Any
 
-# Degree regex patterns - tailored for Indian IT and global tech hiring
+# Degree regex patterns - strictly anchored to avoid false positives (e.g. 'be' as a verb)
 DEGREE_PATTERNS = [
-    ("MCA", r"\b(?:mca|m\.c\.a|master\s+of\s+computer\s+applications?|computer\s+applications?)\b"),
-    ("M.Tech", r"\b(?:m\.?tech|master\s+of\s+technology|m\.?e|master\s+of\s+engineering)\b"),
-    ("B.Tech", r"\b(?:b\.?tech|b\.?e|bachelor\s+of\s+engineering|bachelor\s+of\s+technology)\b"),
+    ("MCA", r"\b(?:mca|m\.c\.a|master\s+of\s+computer\s+applications?)\b"),
+    ("M.Tech", r"(?:\b(?:m\.?tech|master\s+of\s+technology|master\s+of\s+engineering)\b|\bm\.e\.?(?!\w)|me\s*[/&]\s*m\.?tech)"),
+    ("B.Tech", r"(?:\b(?:b\.?tech|bachelor\s+of\s+engineering|bachelor\s+of\s+technology)\b|\bb\.e\.?(?!\w)|be\s*[/&]\s*b\.?tech|b\.?tech\s*[/&]\s*be)"),
     ("BCA", r"\b(?:bca|b\.c\.a|bachelor\s+of\s+computer\s+applications?)\b"),
-    ("B.Sc CS", r"\b(?:b\.?sc\s+(?:cs|it|computer\s+science)|bachelor\s+of\s+science\s+in\s+computer)\b"),
-    ("Master's", r"\b(?:master'?s\s+degree|ms\s+in\s+computer|post\s*graduate)\b"),
-    ("Bachelor's", r"\b(?:bachelor'?s\s+degree|under\s*graduate)\b"),
-    ("Any Graduate", r"\b(?:any\s+graduate|any\s+degree|graduation\s+not\s+required|all\s+graduates?)\b"),
+    ("B.Sc CS", r"\b(?:b\.?sc\s+(?:in\s+)?(?:cs|it|computer\s+science)|bachelor\s+of\s+science\s+(?:in\s+)?(?:computer\s+science|cs|it))\b"),
+    ("Master's", r"\b(?:master'?s\s+degree|ms\s+in\s+(?:computer|cs|engineering|science)|m\.s\.\s+degree|post\s*graduate\s+degree)\b"),
+    ("Bachelor's", r"\b(?:bachelor'?s\s+degree|under\s*graduate\s+degree|b\.s\.\s+degree|bs\s+degree)\b"),
+    ("Any Graduate", r"\b(?:any\s+graduate|any\s+degree|graduation\s+not\s+required)\b"),
 ]
+
+def extract_qualification_section(text: Optional[str]) -> str:
+    """
+    Extracts the qualifications/requirements section from a job description,
+    stripping HTML and bounding the search to prevent boilerplate false positives.
+    """
+    if not text:
+        return ""
+    clean = re.sub(r'<[^>]+>', ' ', text)
+    match = re.search(
+        r'(?:qualifications?|requirements?|education|eligibility|prerequisites?|what\s+you(?:(?:\'ll)?|\s+will)\s+need|basic\s+qualifications|who\s+you\s+are|minimum\s+qualifications)'
+        r'[:\s\n\-–]+(.*?)(?:what\s+we\s+offer|benefits|about\s+(?:us|the\s+company)|perks|equal\s+opportunity|how\s+to\s+apply|$)',
+        clean,
+        re.IGNORECASE | re.DOTALL
+    )
+    if match:
+        return match.group(1)[:4000]
+    return clean[:4000]
+
+def extract_degree(text: Optional[str]) -> Optional[str]:
+    """
+    Extracts the minimum required degree from text.
+    Handles compound phrasing like 'Bachelor's or Master's degree' correctly by recognizing
+    that a Bachelor's degree satisfies the minimum requirement.
+    Returns None if no degree is explicitly required.
+    """
+    if not text:
+        return None
+        
+    qual_section = extract_qualification_section(text) or text
+    clean = re.sub(r'<[^>]+>', ' ', qual_section).lower()
+
+    # 1. Specialized degrees (MCA, BCA, B.Sc CS)
+    if re.search(r"\b(?:mca|m\.c\.a|master\s+of\s+computer\s+applications?)\b", clean):
+        return "MCA"
+    if re.search(r"\b(?:bca|b\.c\.a|bachelor\s+of\s+computer\s+applications?)\b", clean):
+        return "BCA"
+    if re.search(r"\b(?:b\.?sc\s+(?:in\s+)?(?:cs|it|computer\s+science)|bachelor\s+of\s+science\s+(?:in\s+)?(?:computer\s+science|cs|it))\b", clean):
+        return "B.Sc CS"
+
+    # 2. Check for engineering degrees
+    has_btech = bool(re.search(r"(?:\b(?:b\.?tech|bachelor\s+of\s+engineering|bachelor\s+of\s+technology)\b|\bb\.e\b(?!\w)|be\s*[/&]\s*b\.?tech|b\.?tech\s*[/&]\s*be)", clean))
+    has_mtech = bool(re.search(r"(?:\b(?:m\.?tech|master\s+of\s+technology|master\s+of\s+engineering)\b|\bm\.e\b(?!\w)|me\s*[/&]\s*m\.?tech)", clean))
+
+    # 3. Check for general Bachelor's and Master's
+    has_bachelor = bool(re.search(r"\b(?:bachelor'?s(?:\s+degree)?|b\.?s\.?\s+degree|b\.?a\.?\s+degree|under\s*graduate(?:\s+degree)?)\b", clean))
+    has_master = bool(re.search(r"\b(?:master'?s(?:\s+degree)?|m\.?s\.?\s+degree|post\s*graduate(?:\s+degree)?)\b", clean))
+
+    # Minimum entry requirement principle:
+    # If a Bachelor's degree (or B.Tech) is accepted (e.g. "Bachelor's or Master's degree"),
+    # the minimum required education is Bachelor's / B.Tech!
+    if has_btech:
+        return "B.Tech"
+    if has_bachelor:
+        return "Bachelor's"
+    if has_mtech:
+        return "M.Tech"
+    if has_master:
+        return "Master's"
+
+    if re.search(r"\b(?:any\s+graduate|any\s+degree|graduation\s+not\s+required)\b", clean):
+        return "Any Graduate"
+
+    return None
+
+def extract_salary(text: Optional[str]) -> Tuple[Optional[float], Optional[float], Optional[str]]:
+    """
+    Extracts salary range and currency from job descriptions or salary strings.
+    Handles Indian LPA (Lakhs Per Annum) and USD formats.
+    Returns: (salary_min, salary_max, currency)
+    """
+    if not text:
+        return None, None, None
+
+    # Pattern 1: LPA format: "4 - 8 LPA", "6.5 to 10 Lakhs", "₹5,00,000 - 10,00,000"
+    lpa_range = re.search(r'(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:lpa|lakhs?|lacs?|lac)', text, re.IGNORECASE)
+    if lpa_range:
+        min_val = float(lpa_range.group(1)) * 100000
+        max_val = float(lpa_range.group(2)) * 100000
+        return min_val, max_val, "INR"
+
+    single_lpa = re.search(r'(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(?:lpa|lakhs?|lacs?|lac)', text, re.IGNORECASE)
+    if single_lpa:
+        val = float(single_lpa.group(1)) * 100000
+        return val, val, "INR"
+
+    # Pattern 2: Raw INR numbers (e.g. ₹ 400000 - ₹ 800000)
+    inr_raw = re.search(r'(?:₹|inr)\s*(\d{5,8})\s*(?:-|to)\s*(?:₹|inr)?\s*(\d{5,8})', text, re.IGNORECASE)
+    if inr_raw:
+        return float(inr_raw.group(1)), float(inr_raw.group(2)), "INR"
+
+    # Pattern 3: USD $XX,XXX - $YY,YYY or $80k - $120k
+    usd_k = re.search(r'\$\s*(\d{2,3})\s*k\s*(?:-|to)\s*\$?\s*(\d{2,3})\s*k', text, re.IGNORECASE)
+    if usd_k:
+        return float(usd_k.group(1)) * 1000, float(usd_k.group(2)) * 1000, "USD"
+
+    usd_full = re.search(r'\$\s*(\d{2,3},\d{3})\s*(?:-|to)\s*\$?\s*(\d{2,3},\d{3})', text)
+    if usd_full:
+        min_val = float(usd_full.group(1).replace(',', ''))
+        max_val = float(usd_full.group(2).replace(',', ''))
+        return min_val, max_val, "USD"
+
+    return None, None, None
 
 # Role taxonomy definitions
 ROLE_TAXONOMY = {
@@ -55,57 +158,6 @@ ROLE_TAXONOMY = {
     ]
 }
 
-def extract_degree(text: Optional[str]) -> Optional[str]:
-    """
-    Extracts the highest/most specific degree required from text.
-    Prioritizes MCA, M.Tech, B.Tech, etc.
-    """
-    if not text:
-        return None
-    for label, pattern in DEGREE_PATTERNS:
-        if re.search(pattern, text, re.IGNORECASE):
-            return label
-    return None
-
-def extract_salary(text: Optional[str]) -> Tuple[Optional[float], Optional[float], Optional[str]]:
-    """
-    Extracts salary range and currency from job descriptions or salary strings.
-    Handles Indian LPA (Lakhs Per Annum) and USD formats.
-    Returns: (salary_min, salary_max, currency)
-    """
-    if not text:
-        return None, None, None
-
-    # Pattern 1: LPA format: "4 - 8 LPA", "6.5 to 10 Lakhs", "₹5,00,000 - 10,00,000"
-    lpa_range = re.search(r'(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:lpa|lakhs?|lacs?|lac)', text, re.IGNORECASE)
-    if lpa_range:
-        min_val = float(lpa_range.group(1)) * 100000
-        max_val = float(lpa_range.group(2)) * 100000
-        return min_val, max_val, "INR"
-
-    single_lpa = re.search(r'(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(?:lpa|lakhs?|lacs?|lac)', text, re.IGNORECASE)
-    if single_lpa:
-        val = float(single_lpa.group(1)) * 100000
-        return val, val, "INR"
-
-    # Pattern 2: Raw INR numbers (e.g. ₹ 400000 - ₹ 800000)
-    inr_raw = re.search(r'(?:₹|inr)\s*(\d{5,8})\s*(?:-|to)\s*(?:₹|inr)?\s*(\d{5,8})', text, re.IGNORECASE)
-    if inr_raw:
-        return float(inr_raw.group(1)), float(inr_raw.group(2)), "INR"
-
-    # Pattern 3: USD $XX,XXX - $YY,YYY or $80k - $120k
-    usd_k = re.search(r'\$\s*(\d{2,3})\s*k\s*(?:-|to)\s*\$?\s*(\d{2,3})\s*k', text, re.IGNORECASE)
-    if usd_k:
-        return float(usd_k.group(1)) * 1000, float(usd_k.group(2)) * 1000, "USD"
-
-    usd_full = re.search(r'\$\s*(\d{2,3},\d{3})\s*(?:-|to)\s*\$?\s*(\d{2,3},\d{3})', text)
-    if usd_full:
-        min_val = float(usd_full.group(1).replace(',', ''))
-        max_val = float(usd_full.group(2).replace(',', ''))
-        return min_val, max_val, "USD"
-
-    return None, None, None
-
 def classify_role(title: str, description: Optional[str] = "") -> str:
     """
     Classifies job title and description into a canonical role taxonomy.
@@ -128,46 +180,128 @@ def classify_role(title: str, description: Optional[str] = "") -> str:
 
     return "software_engineer"
 
-def extract_experience(title: str, text: Optional[str] = "") -> str:
+def extract_experience(title: str, text: Optional[str] = "") -> Optional[str]:
     """
-    Extracts experience level: 'fresher', 'junior', 'mid', 'senior'
-    Fresher is 0-1 years (intern, trainee, campus, graduate, apprentice, entry level, 0 Yrs, no experience).
+    Extracts candidate experience level accurately: 'fresher', 'junior', 'mid', 'senior'
+    Returns None if experience is not explicitly specified (no false defaults).
+    
+    CRITICAL RULE:
+    Explicit numerical requirements in the job description (e.g. '2-3 years of experience')
+    ARE GROUND TRUTH and MUST take precedence over ambiguous title words (e.g. 'Senior Associate').
     """
     t_lower = (title or "").lower()
-    text_lower = (text or "").lower()
-    combined = f"{t_lower} {text_lower}"
+    desc_clean = re.sub(r'<[^>]+>', ' ', text or "")
 
-    # Priority 1: Clear Fresher / Intern markers in TITLE
-    if re.search(r'\b(?:fresher|intern|internship|trainee|campus|graduate|graduates|apprentice|entry[\s-]level|student)\b', t_lower):
+    # 1. First, check candidate requirements in text for explicit years of experience
+    # Filter out company history boilerplate lines (e.g. "for 10 years", "founded 15 years ago")
+    filtered_lines = []
+    for line in desc_clean.split("\n"):
+        line_l = line.lower()
+        if any(h in line_l for h in (
+            "founded in", "in business for", "serving customers for", "years in business", 
+            "years of combined", "company has", "experience delivering", "years of innovation",
+            "over the past", "for more than", "history of"
+        )):
+            continue
+        filtered_lines.append(line)
+    body = " ".join(filtered_lines)
+
+    # Check for explicit fresher phrasing in text
+    if re.search(r"\b(?:no\s+prior\s+(?:sales\s+|work\s+)?experience|no\s+experience\s+required|freshers?\s+can\s+apply|fresh\s+graduates?\s+can\s+apply|202[4-7]\s+batch)\b", body, re.IGNORECASE):
         return "fresher"
 
-    # Priority 2: Senior / Lead in TITLE
-    if re.search(r'\b(?:senior|sr\.?|lead|principal|architect|staff|director|head|vp|manager|chief)\b', t_lower):
-        return "senior"
+    # Precise anchored patterns for candidate experience:
+    # Pattern 1: Range "2-3 years of experience", "2 to 4 years experience", "experience: 2-3 yrs"
+    range_match = re.search(
+        r'''(?x)
+        (?:
+            # e.g., "2-4 years of experience", "2 to 3 yrs of relevant experience"
+            \b(\d{1,2})\s*(?:-|to)\s*(\d{1,2})\s*(?:years?|yrs?)(?:\s+(?:of\s+)?(?:relevant|professional|hands[- ]on|industry|work|direct)?\s*experience)?
+            |
+            # e.g., "experience : 2 - 3 years", "experience required: 2-4 yrs"
+            \bexperience(?:\s+required)?\s*[:\-]\s*(\d{1,2})\s*(?:-|to)\s*(\d{1,2})\s*(?:years?|yrs?)
+        )
+        ''', 
+        body, 
+        re.IGNORECASE
+    )
+    if range_match:
+        groups = [g for g in range_match.groups() if g is not None]
+        if len(groups) >= 2:
+            min_yr = int(groups[0])
+            max_yr = int(groups[1])
+            if min_yr >= 5:
+                return "senior"
+            elif min_yr >= 3:
+                return "mid"
+            elif max_yr <= 1:
+                return "fresher"
+            else: # min_yr is 1 or 2 (e.g. 1-2, 1-3, 2-3, 2-4)
+                if max_yr >= 5:
+                    return "mid" # e.g. 2-5 or 2-6 years
+                return "junior"  # 1-3, 2-3, 2-4 years is Junior!
 
-    # Priority 3: Mid / Junior in TITLE
-    if re.search(r'\b(?:mid|intermediate)\b', t_lower):
-        return "mid"
-    if re.search(r'\b(?:junior|jr\.?|associate)\b', t_lower):
+    # Pattern 2: Single number anchored to experience:
+    # "minimum 5 years of experience", "3+ years of experience", "at least 2 years experience"
+    single_match = re.search(
+        r'''(?x)
+        (?:
+            # "min 3 years of experience", "at least 5 years of experience"
+            \b(?:min(?:imum)?|at\s+least)\s*(?:of\s+)?(\d{1,2})\s*(?:\+|plus)?\s*(?:years?|yrs?)(?:\s+(?:of\s+)?(?:relevant|professional|hands[- ]on|work)?\s*experience)?
+            |
+            # "5+ years of experience", "3+ yrs experience"
+            \b(\d{1,2})\s*(?:\+|plus)\s*(?:years?|yrs?)\s*(?:of\s+)?(?:relevant|professional|hands[- ]on|work)?\s*experience
+            |
+            # "experience : 3+ years", "experience: 5 years"
+            \bexperience(?:\s+required)?\s*[:\-]\s*(\d{1,2})\s*(?:\+|plus)?\s*(?:years?|yrs?)
+            |
+            # "3 years of relevant experience"
+            \b(\d{1,2})\s*(?:years?|yrs?)\s+(?:of\s+)(?:relevant|professional|hands[- ]on|work)?\s*experience
+        )
+        ''',
+        body,
+        re.IGNORECASE
+    )
+    if single_match:
+        groups = [g for g in single_match.groups() if g is not None]
+        if groups:
+            yr = int(groups[0])
+            if yr >= 5:
+                return "senior"
+            elif yr >= 3:
+                return "mid"
+            elif yr >= 1:
+                return "junior"
+            elif yr == 0:
+                return "fresher"
+
+    # 2. If NO numerical requirement is found in the description, inspect Title Keywords as Fallback
+    # Priority 1: Fresher / Intern in title
+    if re.search(r"\b(?:fresher|freshers|intern|internship|trainee|campus|apprentice|entry[\s-]level|student)\b", t_lower):
+        return "fresher"
+
+    # Priority 2: Junior / Associate in title
+    if re.search(r"\b(?:junior|jr\.?)\b", t_lower):
+        return "junior"
+    if "senior associate" in t_lower:
+        # Senior Associate is standard level-2 (2-3 years), NOT senior!
+        return "junior"
+    if re.search(r"\b(?:associate|assistant)\b", t_lower) and not re.search(r"\b(?:director|vp|vice\s+president|head)\b", t_lower):
         return "junior"
 
-    # Priority 4: Explicit year patterns in text or title
-    if re.search(r'\b(?:5\+|6\+|7\+|8\+|9\+|10\+|[5-9]\d*)\s*years?\b', combined):
+    # Priority 3: Senior / Lead / Principal in title (when no explicit years stated)
+    if re.search(r"\b(?:senior|sr\.?|lead|principal|architect|staff|director|head|vp|vice\s+president|chief)\b", t_lower):
         return "senior"
-    if re.search(r'\b(?:3\s*-\s*5|4\s*-\s*6|3\+|4\+)\s*years?\b', combined):
+
+    # Priority 4: Mid in title
+    if re.search(r"\b(?:mid[\s-]level|intermediate)\b", t_lower):
         return "mid"
-    if re.search(r'\b(?:1\s*-\s*3|2\s*-\s*4|1\s*-\s*2|0\s*-\s*2|1\+|2\+)\s*years?\b', combined):
-        return "junior"
-    if re.search(r'\b(?:0\s*-\s*1|0\s*-\s*0|0\s*years?|no\s+experience|freshers?\s+can\s+apply|202[4-7]\s+batch)\b', combined):
+
+    # Explicit level mentions in body text
+    if re.search(r"\b(?:entry[\s-]level|graduate\s+role)\b", body, re.IGNORECASE):
         return "fresher"
 
-    # Fallback checks in combined text
-    if re.search(r'\b(?:fresher|entry[\s-]level|trainee|intern|internship)\b', text_lower):
-        return "fresher"
-    if re.search(r'\b(?:senior|principal|architect|director)\b', text_lower):
-        return "senior"
-
-    return "junior"
+    return None
 
 # South India & Chennai micro-corridor mapping
 CHENNAI_MICRO_CORRIDORS = [
@@ -194,9 +328,15 @@ def normalize_south_india_location(location: Optional[str], text: Optional[str] 
     """
     Normalizes local Chennai tech parks and South India regional corridors.
     Returns: (normalized_location, corridor_name)
+    Never forces 'India' if unstated.
     """
-    # 1. If explicit location is given, match on location directly without text noise
     loc_clean = (location or "").strip()
+    
+    # Check for remote
+    if loc_clean and "remote" in loc_clean.lower():
+        return "Remote", "Remote"
+        
+    # 1. If explicit location is given, match on location directly without text noise
     if loc_clean and loc_clean.lower() not in ("unspecified", "india", ""):
         for pattern, canonical_loc, corridor in CHENNAI_MICRO_CORRIDORS:
             if re.search(pattern, loc_clean, re.IGNORECASE):
@@ -205,7 +345,7 @@ def normalize_south_india_location(location: Optional[str], text: Optional[str] 
             return "Chennai, Tamil Nadu", "Chennai Central"
         return loc_clean, None
 
-    # 2. Only if location is empty or generic, inspect text (e.g. title / structured header)
+    # 2. Only if location is empty or generic, check if title has explicit city
     text_clean = (text or "").strip()
     if text_clean:
         for pattern, canonical_loc, corridor in CHENNAI_MICRO_CORRIDORS:
@@ -214,4 +354,4 @@ def normalize_south_india_location(location: Optional[str], text: Optional[str] 
         if "chennai" in text_clean.lower() or "madras" in text_clean.lower():
             return "Chennai, Tamil Nadu", "Chennai Central"
 
-    return loc_clean or "India", None
+    return loc_clean or "Unspecified", None

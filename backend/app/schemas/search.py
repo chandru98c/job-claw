@@ -12,7 +12,7 @@ class SearchQuery(BaseModel):
     salary_max: Optional[float] = Field(None, ge=0)               # e.g. 1000000 (10 LPA) or 150000 (USD)
     job_type: Optional[str] = Field(None, max_length=50)          # e.g. "Full-time", "Internship", "Contract"
     experience_level: Optional[str] = Field(None, max_length=50)  # e.g. "fresher", "junior", "mid", "senior"
-    sort_by: Optional[str] = Field("recent", pattern="^(recent|score)$")
+    sort_by: Optional[str] = Field("posted_at", pattern="^(recent|posted_at|discovered|score)$")
     page: int = Field(1, ge=1)
     limit: int = Field(20, ge=1, le=100)
 
@@ -47,6 +47,7 @@ class JobMatchResult(BaseModel):
     city: Optional[str] = None
     created_at: Optional[str] = None
     discovered_at: Optional[str] = None
+    posted_at: Optional[str] = None
 
 class SearchResponse(BaseModel):
     items: List[JobMatchResult]

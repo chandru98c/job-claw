@@ -12,6 +12,32 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 from datetime import datetime, timezone
 
 def _format_time_ago(job) -> str:
+    # 1. Primary: Authentic employer job posting timestamp
+    posted_dt = getattr(job, "posted_at", None)
+    if posted_dt:
+        if posted_dt.tzinfo is None:
+            posted_dt = posted_dt.replace(tzinfo=timezone.utc)
+        diff = datetime.now(timezone.utc) - posted_dt
+        seconds = int(diff.total_seconds())
+        if seconds < 0:
+            seconds = 0
+        if seconds < 60:
+            return "Posted just now"
+        minutes = seconds // 60
+        if minutes < 60:
+            return f"Posted {minutes}m ago"
+        hours = minutes // 60
+        if hours < 24:
+            return f"Posted {hours}h ago"
+        days = hours // 24
+        if days < 7:
+            return f"Posted {days}d ago"
+        weeks = days // 7
+        if weeks < 4:
+            return f"Posted {weeks}w ago"
+        return f"Posted {days // 30}mo ago"
+
+    # 2. Fallback: Crawler discovery timestamp (clearly labeled as Found)
     dt = getattr(job, "last_source_seen_at", None) or getattr(job, "created_at", None) or getattr(job, "updated_at", None)
     if not dt:
         return "Recently"
@@ -22,26 +48,29 @@ def _format_time_ago(job) -> str:
     if seconds < 0:
         seconds = 0
     if seconds < 60:
-        return "Just now"
+        return "Found just now"
     minutes = seconds // 60
     if minutes < 60:
-        return f"{minutes}m ago"
+        return f"Found {minutes}m ago"
     hours = minutes // 60
     if hours < 24:
-        return f"{hours}h ago"
+        return f"Found {hours}h ago"
     days = hours // 24
     if days < 7:
-        return f"{days}d ago"
+        return f"Found {days}d ago"
     weeks = days // 7
     if weeks < 4:
-        return f"{weeks}w ago"
-    return f"{days // 30}mo ago"
+        return f"Found {weeks}w ago"
+    return f"Found {days // 30}mo ago"
 
 def _extract_corridor_and_city(location: str | None) -> tuple[str | None, str | None]:
     if not location:
         return None, None
-    loc_lower = location.lower()
+    loc_lower = location.lower().strip()
     
+    if "remote" in loc_lower:
+        return "Remote", "Remote"
+        
     city = None
     if "chennai" in loc_lower or "madras" in loc_lower:
         city = "Chennai"
@@ -49,26 +78,57 @@ def _extract_corridor_and_city(location: str | None) -> tuple[str | None, str | 
         city = "Bengaluru"
     elif "hyderabad" in loc_lower:
         city = "Hyderabad"
-    elif "coimbatore" in loc_lower:
+    elif "coimbatore" in loc_lower or "kovai" in loc_lower:
         city = "Coimbatore"
     elif "hosur" in loc_lower:
         city = "Hosur"
+    elif "madurai" in loc_lower:
+        city = "Madurai"
+    elif "trichy" in loc_lower or "tiruchirappalli" in loc_lower:
+        city = "Trichy"
+    elif "salem" in loc_lower:
+        city = "Salem"
+    elif "mumbai" in loc_lower or "bombay" in loc_lower:
+        city = "Mumbai"
+    elif "pune" in loc_lower:
+        city = "Pune"
+    elif "delhi" in loc_lower or "noida" in loc_lower or "gurgaon" in loc_lower or "gurugram" in loc_lower:
+        city = "Delhi NCR"
+    elif "kolkata" in loc_lower or "calcutta" in loc_lower:
+        city = "Kolkata"
+    elif "kochi" in loc_lower or "cochin" in loc_lower:
+        city = "Kochi"
         
     corridor = None
-    if "omr" in loc_lower or "siruseri" in loc_lower or "taramani" in loc_lower or "tidel" in loc_lower:
-        corridor = "OMR / Siruseri"
-    elif "guindy" in loc_lower or "olympia" in loc_lower or "mepz" in loc_lower:
-        corridor = "Guindy / MEPZ"
-    elif "dlf" in loc_lower or "porur" in loc_lower or "manapakkam" in loc_lower:
-        corridor = "DLF Porur"
-    elif "saravanampatti" in loc_lower or "chil sez" in loc_lower:
-        corridor = "Coimbatore TIDEL"
-    elif "whitefield" in loc_lower or "electronic city" in loc_lower or "manyata" in loc_lower:
-        corridor = "Whitefield / E-City"
-    elif "hitec" in loc_lower or "gachibowli" in loc_lower:
-        corridor = "Hitec City"
-    elif "remote" in loc_lower:
-        corridor = "Remote"
+    # Micro-corridors ONLY attached if the parent city is verified
+    if city == "Chennai":
+        if "omr" in loc_lower or "siruseri" in loc_lower or "taramani" in loc_lower or "tidel" in loc_lower:
+            corridor = "OMR / Siruseri"
+        elif "guindy" in loc_lower or "olympia" in loc_lower or "mepz" in loc_lower or "tambaram" in loc_lower:
+            corridor = "Guindy / MEPZ"
+        elif "dlf" in loc_lower or "porur" in loc_lower or "manapakkam" in loc_lower:
+            corridor = "DLF Porur"
+        elif "ambattur" in loc_lower:
+            corridor = "Ambattur IT Park"
+        else:
+            corridor = "Chennai Central"
+    elif city == "Bengaluru":
+        if "whitefield" in loc_lower or "electronic city" in loc_lower or "manyata" in loc_lower or "bellandur" in loc_lower:
+            corridor = "Whitefield / E-City"
+        else:
+            corridor = "Bengaluru Tech Hub"
+    elif city == "Hyderabad":
+        if "hitec" in loc_lower or "gachibowli" in loc_lower or "madhapur" in loc_lower:
+            corridor = "Hitec City"
+        else:
+            corridor = "Hyderabad Tech Hub"
+    elif city == "Coimbatore":
+        if "tidel" in loc_lower or "saravanampatti" in loc_lower or "chil" in loc_lower:
+            corridor = "Coimbatore TIDEL"
+        else:
+            corridor = None
+    elif city == "Hosur":
+        corridor = "Hosur Corridor"
         
     return corridor, city
 
@@ -172,7 +232,7 @@ async def get_jobs(
     salary_max: float | None = Query(None, ge=0),
     job_type: str | None = Query(None, max_length=50),
     experience_level: str | None = Query(None, max_length=50),
-    sort_by: str | None = Query("recent", pattern="^(recent|score)$"),
+    sort_by: str | None = Query("posted_at", pattern="^(recent|posted_at|discovered|score)$"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
@@ -187,7 +247,7 @@ async def get_jobs(
         salary_max=salary_max,
         job_type=job_type,
         experience_level=experience_level,
-        sort_by=sort_by or "recent",
+        sort_by=sort_by or "posted_at",
         page=page,
         limit=limit
     )
@@ -218,7 +278,8 @@ async def get_jobs(
             corridor=corr,
             city=city,
             created_at=j.created_at.isoformat() if j.created_at else None,
-            discovered_at=j.last_source_seen_at.isoformat() if j.last_source_seen_at else (j.created_at.isoformat() if j.created_at else None)
+            discovered_at=j.last_source_seen_at.isoformat() if j.last_source_seen_at else (j.created_at.isoformat() if j.created_at else None),
+            posted_at=j.posted_at.isoformat() if j.posted_at else None
         ))
         
     return SearchResponse(
@@ -232,7 +293,7 @@ async def get_jobs(
 async def match_jobs(
     request: Request,
     profile: Profile = Depends(get_valid_profile),
-    sort_by: str | None = Query("score", pattern="^(recent|score)$"),
+    sort_by: str | None = Query("score", pattern="^(recent|posted_at|discovered|score)$"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
@@ -270,7 +331,8 @@ async def match_jobs(
             corridor=corr,
             city=city,
             created_at=j.created_at.isoformat() if j.created_at else None,
-            discovered_at=j.last_source_seen_at.isoformat() if j.last_source_seen_at else (j.created_at.isoformat() if j.created_at else None)
+            discovered_at=j.last_source_seen_at.isoformat() if j.last_source_seen_at else (j.created_at.isoformat() if j.created_at else None),
+            posted_at=j.posted_at.isoformat() if j.posted_at else None
         ))
         
     return SearchResponse(
