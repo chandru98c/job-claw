@@ -19,9 +19,9 @@ from app.core.http import SafeHTTPClient
 
 logger = logging.getLogger(__name__)
 
-# Pattern: apply.workable.com/{token} or apply.workable.com/api/v3/accounts/{token}/jobs
+# Pattern: apply.workable.com/{token} or {token}.workable.com or apply.workable.com/api/v3/accounts/{token}/jobs
 _WORKABLE_BOARD_PATTERN = re.compile(
-    r"^https?://(?:apply\.)?workable\.com/(?:api/v3/accounts/)?([a-zA-Z0-9_-]+)(?:/.*)?$",
+    r"^(?:https?://)?(?:apply\.workable\.com/(?:api/v3/accounts/)?([a-zA-Z0-9_-]+)|([a-zA-Z0-9_-]+)\.workable\.com)(?:/.*)?$",
     re.IGNORECASE,
 )
 
@@ -43,10 +43,12 @@ class WorkableAdapter(ATSAdapter):
         return 10
 
     def extract_board_identifier(self, url: str) -> Optional[str]:
-        match = _WORKABLE_BOARD_PATTERN.match(url)
+        if not url:
+            return None
+        match = _WORKABLE_BOARD_PATTERN.match(url.strip())
         if match:
-            token = match.group(1).lower()
-            if token not in ["j", "api"]: # ignore API or job detail routes
+            token = (match.group(1) or match.group(2)).lower()
+            if token not in ["j", "api", "apply", "www"]:
                 return token
         return None
 
@@ -58,13 +60,7 @@ class WorkableAdapter(ATSAdapter):
         if source:
             source_id = source.source_id
             
-        if source and source.identifier:
-            board_token = source.identifier
-        elif url:
-            board_token = self.extract_board_identifier(url)
-        else:
-            return []
-            
+        board_token = self.resolve_board_identifier(url, source)
         if not board_token:
             return []
 

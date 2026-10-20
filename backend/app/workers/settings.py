@@ -2,7 +2,12 @@ import logging
 from arq.connections import RedisSettings
 from app.core.config import settings
 from app.workers.tasks import dummy_discovery_task
-from app.workers.discovery import discovery_task, scheduled_registry_discovery
+from app.workers.discovery import (
+    discovery_task,
+    scheduled_registry_discovery,
+    scheduled_working_sources_discovery,
+    scheduled_pending_sources_discovery,
+)
 from app.workers.canonicalize import canonicalize_job_task
 from app.workers.verification import verify_job_task
 from app.workers.reconciliation import reconcile_stuck_tasks
@@ -37,11 +42,15 @@ class WorkerSettings:
         verify_job_task,
         prepare_application_task,
         submit_application_task,
-        execute_saved_search_task
+        execute_saved_search_task,
+        scheduled_working_sources_discovery,
+        scheduled_pending_sources_discovery,
     ]
     cron_jobs = [
         cron(scheduled_saved_searches, minute=0), # Run every hour
-        cron(scheduled_registry_discovery, hour={2, 14}, minute=0) # Run twice daily at 02:00 and 14:00
+        cron(scheduled_working_sources_discovery, minute={0, 10, 20, 30, 40, 50}), # Run every 10 minutes in server mode for verified working sites
+        cron(scheduled_pending_sources_discovery, minute=None), # Sweep pending registry continuously every 1 minute!
+        cron(scheduled_registry_discovery, hour={2, 14}, minute=0) # Run twice daily at 02:00 and 14:00 for full sweeps
     ]
     on_startup = startup
     on_shutdown = shutdown

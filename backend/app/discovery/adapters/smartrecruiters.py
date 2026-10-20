@@ -19,9 +19,9 @@ from app.core.http import SafeHTTPClient
 
 logger = logging.getLogger(__name__)
 
-# Pattern: careers.smartrecruiters.com/{token}
+# Pattern: careers.smartrecruiters.com/{token} or {token}.smartrecruiters.com
 _SMARTRECRUITERS_BOARD_PATTERN = re.compile(
-    r"^https?://(?:careers\.)?smartrecruiters\.com/([a-zA-Z0-9_-]+)(?:/.*)?$",
+    r"^(?:https?://)?(?:(?:careers\.|jobs\.)?smartrecruiters\.com/([a-zA-Z0-9_-]+)|([a-zA-Z0-9_-]+)\.smartrecruiters\.com)(?:/.*)?$",
     re.IGNORECASE,
 )
 
@@ -43,16 +43,20 @@ class SmartRecruitersAdapter(ATSAdapter):
         return 10
 
     def extract_board_identifier(self, url: str) -> Optional[str]:
-        match = _SMARTRECRUITERS_BOARD_PATTERN.match(url)
+        if not url:
+            return None
+        match = _SMARTRECRUITERS_BOARD_PATTERN.match(url.strip())
         if match:
-            return match.group(1)
+            token = (match.group(1) or match.group(2))
+            if token and token.lower() not in ["careers", "jobs", "www", "api"]:
+                return token
         return None
 
     def recognizes_url(self, url: str) -> bool:
         return self.extract_board_identifier(url) is not None
 
     def generate_candidates(self, url: str = None, source: Optional[SourceConfig] = None) -> list[StrategyCandidate]:
-        board_token = self.extract_board_identifier(url)
+        board_token = self.resolve_board_identifier(url, source)
         if not board_token:
             return []
 

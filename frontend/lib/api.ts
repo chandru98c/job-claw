@@ -11,37 +11,63 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(endpoint: string, options: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
+  const timeoutMs = options.timeoutMs ?? 15000;
   
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Link caller signal if provided
+  if (options.signal) {
+    if (options.signal.aborted) {
+      clearTimeout(timeoutId);
+      controller.abort();
+    } else {
+      options.signal.addEventListener("abort", () => {
+        clearTimeout(timeoutId);
+        controller.abort();
+      }, { once: true });
+    }
+  }
+
   const headers = {
     "Content-Type": "application/json",
     ...options.headers,
   };
 
-  const response = await fetch(url, { ...options, headers });
+  try {
+    const response = await fetch(url, { ...options, headers, signal: controller.signal });
+    clearTimeout(timeoutId);
 
-  if (!response.ok) {
-    let errorData;
-    try {
-      errorData = await response.json();
-    } catch {
-      errorData = { detail: response.statusText };
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = { detail: response.statusText };
+      }
+      
+      throw new ApiError(
+        response.status, 
+        errorData.detail || "An unexpected error occurred", 
+        errorData
+      );
     }
-    
-    throw new ApiError(
-      response.status, 
-      errorData.detail || "An unexpected error occurred", 
-      errorData
-    );
-  }
 
-  // Handle 204 No Content
-  if (response.status === 204) {
-    return {} as T;
-  }
+    // Handle 204 No Content
+    if (response.status === 204) {
+      return {} as T;
+    }
 
-  return response.json();
+    return response.json();
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError" && !options.signal?.aborted) {
+      throw new ApiError(408, "Request timed out after 15 seconds. Please refresh or try again.");
+    }
+    throw err;
+  }
 }
 
 export const api = {

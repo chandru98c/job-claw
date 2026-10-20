@@ -67,13 +67,7 @@ class LeverAdapter(ATSAdapter):
         if source:
             source_id = source.source_id
             
-        if source and source.identifier:
-            board_token = source.identifier
-        elif url:
-            board_token = self.extract_board_identifier(url)
-        else:
-            return []
-            
+        board_token = self.resolve_board_identifier(url, source)
         if not board_token:
             return []
 
@@ -205,10 +199,9 @@ class LeverAdapter(ATSAdapter):
                     remote_status = "Remote"
                 
                 provider_metadata = {
-                    "department": categories.get("department", "") or categories.get("team", ""),
-                    "workplaceType": workplace,
-                    "allLocations": categories.get("allLocations", []),
-                    "lists": j.get("lists", [])
+                    "department": str(categories.get("department", "") or categories.get("team", ""))[:200],
+                    "workplaceType": str(workplace)[:50],
+                    "allLocations": categories.get("allLocations", [])[:5],
                 }
 
                 raw_jobs.append(

@@ -83,6 +83,13 @@ class DiscoveryEngine:
 
         # 1. Identify all applicable strategies
         candidates = self._registry.find_candidates(input_url, source_config)
+
+        if not candidates and source_config and source_config.careers_url and source_config.careers_url != input_url:
+            candidates = self._registry.find_candidates(source_config.careers_url, source_config)
+
+        if not candidates and source_config and source_config.domain and f"https://{source_config.domain}" != input_url:
+            candidates = self._registry.find_candidates(f"https://{source_config.domain}", source_config)
+
         accounting.record_candidate()
         await self._emit("candidates_generated", {"count": len(candidates)})
 
@@ -135,7 +142,7 @@ class DiscoveryEngine:
             
             # 6. Check Sufficiency
             perf = performances.get(method_id)
-            if self._is_sufficient(method_result, perf):
+            if self._is_sufficient(method_result, perf, method_id=method_id):
                 await self._emit("method_sufficient", {"method": method_id, "jobs": len(method_result.raw_jobs)})
                 break
             else:
@@ -146,7 +153,26 @@ class DiscoveryEngine:
             await self._update_performances(source_config.source_id, result.results)
 
         result.accounting = accounting.summary()
-        result.success = len(result.errors) == 0 or len(result.raw_jobs) > 0
+        ats_methods = {
+            "greenhouse_ats", "lever_ats", "ashby_ats", "workable_ats", "bamboohr_ats", 
+            "keka_ats", "darwinbox_ats", "zohorecruit_ats", "recruitee_ats", "breezy_ats", 
+            "teamtailor_ats", "personio_ats", "workday_ats", "wordpress_ats", "smartrecruiters_ats", "naukri_ats",
+            "greenhouse", "lever", "ashby", "workable", "bamboohr", 
+            "keka", "darwinbox", "zohorecruit", "recruitee", "breezy", 
+            "teamtailor", "personio", "workday", "wordpress", "smartrecruiters", "naukri"
+        }
+        has_successful_ats = any(
+            r.success for r in result.results 
+            if r.strategy_id in ats_methods or r.strategy_id.endswith("_ats")
+        )
+        if len(result.raw_jobs) > 0:
+            result.success = True
+        elif has_successful_ats:
+            result.success = True
+            # Clean out non-fatal heuristic fallback probe errors (e.g. 404 on robots.txt/sitemap)
+            result.errors = [e for e in result.errors if e.strategy_id in ats_methods or e.strategy_id.endswith("_ats")]
+        else:
+            result.success = len(result.errors) == 0
         await self._emit("discovery_completed", {"success": result.success, "jobs_discovered": len(result.raw_jobs)})
         return result
 
@@ -218,17 +244,31 @@ class DiscoveryEngine:
         return StrategyExecutionResult(
             strategy_id=method_id,
             candidate_id="aggregated",
-            success=len(combined_errors) == 0,
+            success=len(combined_jobs) > 0 or len(combined_errors) == 0,
             raw_jobs=combined_jobs,
             errors=combined_errors,
         )
 
-    def _is_sufficient(self, result: StrategyExecutionResult, perf: Optional[DiscoveryMethodPerformance]) -> bool:
+    def _is_sufficient(self, result: StrategyExecutionResult, perf: Optional[DiscoveryMethodPerformance], method_id: str = "") -> bool:
         if not result.success:
             return False
             
         jobs_found = len(result.raw_jobs)
         
+        # Dedicated ATS adapters (API-based, official company feeds):
+        # A successful API response with 0 jobs means the company currently has 0 open postings.
+        # It is authoritative and sufficient. Falling back to heuristic scrapers/LLMs is counterproductive.
+        ats_methods = {
+            "greenhouse_ats", "lever_ats", "ashby_ats", "workable_ats", "bamboohr_ats", 
+            "keka_ats", "darwinbox_ats", "zohorecruit_ats", "recruitee_ats", "breezy_ats", 
+            "teamtailor_ats", "personio_ats", "workday_ats", "wordpress_ats", "smartrecruiters_ats", "naukri_ats",
+            "greenhouse", "lever", "ashby", "workable", "bamboohr", 
+            "keka", "darwinbox", "zohorecruit", "recruitee", "breezy", 
+            "teamtailor", "personio", "workday", "wordpress", "smartrecruiters", "naukri"
+        }
+        if method_id in ats_methods or method_id.endswith("_ats"):
+            return True
+
         if perf and perf.runs > 0:
             historical_baseline = perf.jobs_found / max(perf.successful_runs, 1)
             # Threshold: must yield at least 50% of the historical average, OR > 0 if baseline is very small
@@ -357,5 +397,8 @@ class DiscoveryEngine:
                         "last_failure_at": now_utc if not agg["success"] else DiscoveryMethodPerformance.last_failure_at,
                     }
                 )
-                await session.execute(stmt)
-            await session.commit()
+                try:
+                    await session.execute(stmt)
+                    await session.commit()
+                except Exception as e:
+                    logger.warning(f"Could not record method performance for {source_id}_{sid}: {e}")

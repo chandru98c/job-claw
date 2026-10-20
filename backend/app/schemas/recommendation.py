@@ -19,6 +19,18 @@ class JobRecommendationResponse(JobRecommendationBase):
     application_id: Optional[str] = None
     task_id: Optional[str] = None
     
+    # Enriched Job Information
+    title: Optional[str] = None
+    company_name: Optional[str] = None
+    location: Optional[str] = None
+    job_type: Optional[str] = None
+    apply_url: Optional[str] = None
+    salary_min: Optional[float] = None
+    salary_max: Optional[float] = None
+    remote_status: Optional[str] = None
+    matched_skills: Optional[List[str]] = None
+    experience_level: Optional[str] = None
+    
     first_seen_at: datetime
     surfaced_at: Optional[datetime] = None
     dismissed_at: Optional[datetime] = None

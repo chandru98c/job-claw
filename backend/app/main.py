@@ -1,4 +1,5 @@
 import logging
+# Trigger reload check
 from contextlib import asynccontextmanager
 
 from arq import create_pool
@@ -31,7 +32,10 @@ async def lifespan(app: FastAPI):
     # Cleanup ARQ Redis Pool
     redis = getattr(app.state, "redis", None)
     if redis is not None:
-        await redis.aclose()
+        if hasattr(redis, "aclose"):
+            await redis.aclose()
+        elif hasattr(redis, "close"):
+            await redis.close()
 
 
 app = FastAPI(

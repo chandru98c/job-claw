@@ -140,3 +140,24 @@
     cursor: pointer !important;
   }
 }
+
+/* Custom Modern Dark Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0d0f;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 9999px;
+  border: 2px solid #0d0d0f;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #27272a #0d0d0f;
+}

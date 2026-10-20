@@ -164,9 +164,9 @@ export default function ApplicationReviewPage() {
   const isFinalState = ["SUBMITTED", "FAILED", "SUBMISSION_STATUS_UNKNOWN", "CANCELLED", "UNSUPPORTED"].includes(app.status);
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto w-full px-6 py-8 overflow-y-auto">
-      <Link href="/recommendations" className="text-muted-foreground hover:text-white flex items-center gap-2 mb-6 w-fit">
-        <ArrowLeft className="w-4 h-4" /> Back
+    <div className="flex flex-col max-w-4xl mx-auto w-full px-4 sm:px-6 py-8 relative">
+      <Link href="/recommendations" className="text-muted-foreground hover:text-white flex items-center gap-2 mb-6 w-fit transition-colors">
+        <ArrowLeft className="w-4 h-4" /> Back to Recommendations
       </Link>
       
       <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/10">

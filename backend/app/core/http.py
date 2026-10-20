@@ -39,6 +39,9 @@ class SafeHTTPClient:
     async def get(self, url: str, headers: Optional[Dict[str, str]] = None) -> bytes:
         return await self.request("GET", url, headers=headers)
 
+    async def post(self, url: str, json: Optional[Any] = None, headers: Optional[Dict[str, str]] = None) -> bytes:
+        return await self.request("POST", url, json=json, headers=headers)
+
     async def request(self, method: str, url: str, **kwargs) -> bytes:
         """
         Executes an HTTP request safely.

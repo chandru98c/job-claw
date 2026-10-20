@@ -61,6 +61,7 @@ class DiscoveryErrorType(str, Enum):
     VALIDATION_FAILURE = "VALIDATION_FAILURE"
     OVERSIZED_PAYLOAD = "OVERSIZED_PAYLOAD"
     REQUIRES_BROWSER_FALLBACK = "REQUIRES_BROWSER_FALLBACK"
+    HTTP_STATUS_ERROR = "HTTP_STATUS_ERROR"
 
 
 # ─── Structured Error ──────────────────────────────────────────────────────
@@ -150,6 +151,8 @@ class RawJob(BaseModel):
     description: Optional[str] = Field(default=None, max_length=MAX_DESCRIPTION_LEN)
     employment_type: Optional[str] = Field(default=None, max_length=128)
     remote_status: Optional[str] = Field(default=None, max_length=64)
+    url: Optional[str] = Field(default=None, max_length=MAX_URL_LEN)
+    apply_url: Optional[str] = Field(default=None, max_length=MAX_URL_LEN)
 
     # Timestamps
     posted_at: Optional[datetime] = None

@@ -37,3 +37,9 @@ AGENTS.md
 CLAUDE.md
 seed_registry.py
 inspo/
+
+# Scratch & Backups
+backend/scratch/
+scratch/
+*.backup
+*.bak

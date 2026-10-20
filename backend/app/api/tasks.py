@@ -48,6 +48,15 @@ async def create_task(request: Request, target_id: str = "dummy", worker_type: s
     
     redis_pool = getattr(request.app.state, "redis", None)
     if redis_pool is None:
+        try:
+            from arq import create_pool
+            from arq.connections import RedisSettings
+            from app.core.config import settings
+            redis_pool = await create_pool(RedisSettings.from_dsn(settings.REDIS_URL))
+            request.app.state.redis = redis_pool
+        except Exception:
+            redis_pool = None
+    if redis_pool is None:
         raise HTTPException(status_code=503, detail="Redis unavailable")
 
     print("Enqueueing job...")

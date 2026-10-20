@@ -3,7 +3,6 @@ import re
 import time
 import logging
 from typing import Optional
-import urllib.parse
 
 from app.discovery.interfaces import ATSAdapter
 from app.schemas.discovery import (
@@ -19,11 +18,12 @@ from app.core.http import SafeHTTPClient
 
 logger = logging.getLogger(__name__)
 
-# Pattern: jobs.ashbyhq.com/{token}
+# Pattern: jobs.ashbyhq.com/{token} or {token}.ashbyhq.com
 _ASHBY_BOARD_PATTERN = re.compile(
-    r"^https?://jobs\.ashbyhq\.com/([a-zA-Z0-9_-]+)(?:/.*)?$",
+    r"^(?:https?://)?(?:jobs\.ashbyhq\.com/([a-zA-Z0-9_-]+)|([a-zA-Z0-9_-]+)\.ashbyhq\.com)(?:/.*)?$",
     re.IGNORECASE,
 )
+
 
 class AshbyAdapter(ATSAdapter):
     @property
@@ -43,31 +43,26 @@ class AshbyAdapter(ATSAdapter):
         return 10
 
     def extract_board_identifier(self, url: str) -> Optional[str]:
-        match = _ASHBY_BOARD_PATTERN.match(url)
+        if not url:
+            return None
+        match = _ASHBY_BOARD_PATTERN.match(url.strip())
         if match:
-            return match.group(1)
+            token = (match.group(1) or match.group(2)).lower()
+            if token not in ["jobs", "api", "www"]:
+                return token
         return None
 
     def recognizes_url(self, url: str) -> bool:
         return self.extract_board_identifier(url) is not None
 
     def generate_candidates(self, url: str = None, source: SourceConfig = None) -> list[StrategyCandidate]:
-        source_id = None
-        if source:
-            source_id = source.source_id
-            
-        if source and source.identifier:
-            board_token = source.identifier
-        elif url:
-            board_token = self.extract_board_identifier(url)
-        else:
-            return []
-            
+        source_id = source.source_id if source else None
+        board_token = self.resolve_board_identifier(url, source)
         if not board_token:
             return []
 
-        # We probe the career page itself. Ashby is an SPA, so it usually requires JS.
-        target_url = f"https://jobs.ashbyhq.com/{board_token}"
+        # Target the official Ashby public posting API (no browser needed, fast JSON)
+        target_url = f"https://api.ashbyhq.com/posting-api/job-board/{board_token}?includeCompensation=true"
         return [
             StrategyCandidate(
                 strategy_id=self.strategy_id,
@@ -95,34 +90,24 @@ class AshbyAdapter(ATSAdapter):
 
         try:
             url = candidate.validated_url or candidate.target_url
-            response_data = await http_client.get(url)
+            response_data = await http_client.get(
+                url,
+                headers={"Accept": "application/json", "User-Agent": "JobClaw/1.0 (Direct ATS Discovery)"},
+            )
             result.requests_attempted = 1
-            
-            # Since Ashby is dynamic, check if we got the raw HTML shell
-            content_str = response_data.decode("utf-8")
-            if "Next.js" in content_str or "ashby" in content_str.lower():
-                # We can try to parse __NEXT_DATA__ here, but if not found or parsing fails, we fallback to Browser.
-                if "__NEXT_DATA__" not in content_str:
-                     raise ValueError("Requires Browser Fallback")
-            
+
             raw_jobs = await self.extract_jobs(response_data, candidate)
-            
-            if not raw_jobs:
-                 # If we extracted 0 jobs, maybe JS is required
-                 raise ValueError("Requires Browser Fallback")
-                 
             result.raw_jobs = raw_jobs
             result.jobs_discovered = len(raw_jobs)
+            result.success = True
 
         except Exception as e:
-            logger.info(f"Ashby adapter requesting browser fallback: {e}")
+            logger.info(f"Ashby API fetch failed: {e}")
             result.success = False
             result.requests_attempted = 1
-            
-            # For Ashby we almost always fall back to Browser due to dynamic rendering
             result.errors.append(
                 DiscoveryError(
-                    error_type=DiscoveryErrorType.REQUIRES_BROWSER_FALLBACK,
+                    error_type=DiscoveryErrorType.HTTP_STATUS_ERROR,
                     strategy_id=self.strategy_id,
                     adapter_id=self.strategy_id,
                     candidate_id=candidate.candidate_id,
@@ -140,75 +125,75 @@ class AshbyAdapter(ATSAdapter):
     ) -> list[RawJob]:
         try:
             content_str = response_data.decode("utf-8")
-            jobs = []
-            
-            # 1. Try __NEXT_DATA__ JSON extraction (HTTP first success)
-            match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', content_str, re.DOTALL)
-            if match:
-                data = json.loads(match.group(1))
-                # Next.js props structure
-                page_props = data.get("props", {}).get("pageProps", {})
-                job_board = page_props.get("jobBoard", {})
-                jobs = job_board.get("jobPostings", [])
-            else:
-                # 2. Browser fallback HTML structure
-                # The browser fallback HTML content might just have the rendered DOM.
-                # However, our BrowserAcquisition currently intercepts network candidates. 
-                # Wait, if we use browser fallback, we just parse the DOM.
-                # But DOM parsing is brittle. Ashby's browser fallback might observe the GraphQL API!
+            board_id = (candidate.evidence or "").replace("Ashby board token: ", "").strip()
+            if not board_id:
+                board_id = self.extract_board_identifier(candidate.target_url) or "unknown"
+            jobs_list = []
+
+            # 1. Try Direct JSON API format
+            try:
+                data = json.loads(content_str)
+                if isinstance(data, dict) and "jobs" in data:
+                    jobs_list = data["jobs"]
+            except Exception:
                 pass
 
-            if not jobs:
+            # 2. Fallback to __NEXT_DATA__ if HTML was returned
+            if not jobs_list:
+                match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', content_str, re.DOTALL)
+                if match:
+                    data = json.loads(match.group(1))
+                    page_props = data.get("props", {}).get("pageProps", {})
+                    job_board = page_props.get("jobBoard", {})
+                    jobs_list = job_board.get("jobPostings", [])
+
+            if not jobs_list:
                 return []
 
-            raw_jobs = []
-            board_id = self.extract_board_identifier(candidate.target_url) or "unknown"
+            raw_jobs: list[RawJob] = []
 
-            for j in jobs:
-                title = j.get("title", "")
-                if not title: continue
-
-                location = j.get("locationName", "")
-                apply_url = j.get("jobPageUrl", "")
-                job_id = str(j.get("id", ""))
-                
-                if not job_id:
+            for j in jobs_list:
+                if not isinstance(j, dict):
                     continue
-                    
-                if not apply_url:
-                    apply_url = f"https://jobs.ashbyhq.com/{board_id}/{job_id}"
 
-                description = j.get("descriptionHtml", "")
-                employment_type = j.get("employmentType", "")
-                remote_status = "Remote" if j.get("isRemote") else None
-                
-                provider_metadata = {
-                    "department": j.get("departmentName", ""),
-                    "secondaryLocations": j.get("secondaryLocations", []),
-                    "compensationTier": j.get("compensationTier", {})
-                }
+                title = (j.get("title") or "").strip()
+                job_id = str(j.get("id") or "")
+                if not title or not job_id:
+                    continue
+
+                location = j.get("locationName") or j.get("location") or ""
+                apply_url = j.get("jobPageUrl") or j.get("jobUrl") or f"https://jobs.ashbyhq.com/{board_id}/{job_id}"
+                description = j.get("descriptionHtml") or j.get("descriptionPlain") or title
+                employment_type = j.get("employmentType") or "Full-time"
+                is_remote = bool(j.get("isRemote"))
+                remote_status = "remote" if is_remote else "on-site"
+
+                provenance = DiscoveryProvenanceDTO(
+                    strategy_id=self.strategy_id,
+                    adapter_id=self.strategy_id,
+                    source_id=candidate.source_id,
+                    source_type="direct_ats",
+                    source_url=candidate.target_url,
+                    source_job_id=job_id,
+                    apply_url=apply_url,
+                    provider_name=self.ats_name,
+                )
 
                 raw_jobs.append(
                     RawJob(
-                        provenance=DiscoveryProvenanceDTO(
-                            strategy_id=self.strategy_id,
-                            adapter_id=self.strategy_id,
-                            source_id=candidate.source_id,
-                            source_type="direct_ats",
-                            source_url=candidate.target_url,
-                            source_job_id=job_id,
-                            apply_url=apply_url,
-                            provider_name=self.ats_name,
-                        ),
+                        provenance=provenance,
                         title=title[:255],
                         company=board_id[:255],
+                        description=description[:50000],
                         location=location[:255] if location else None,
-                        description=description[:50000] if description else None,
-                        employment_type=employment_type[:128] if employment_type else None,
-                        remote_status=remote_status[:64] if remote_status else None,
-                        provider_metadata=provider_metadata
+                        remote_status=remote_status[:64],
+                        employment_type=employment_type[:128],
+                        provider_metadata={"department": j.get("departmentName") or ""}
                     )
                 )
+
             return raw_jobs
-        except Exception:
+
+        except Exception as e:
+            logger.error(f"Error extracting Ashby jobs: {e}")
             return []

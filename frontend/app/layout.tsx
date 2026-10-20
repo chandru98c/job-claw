@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Job Claw | Automated Job Discovery & Application",
-  description: "Job Claw is an autonomous agent that discovers jobs and applies on your behalf.",
+  description: "Direct career board discovery and application tracking across verified employer ATS endpoints.",
   icons: {
     icon: [
       { url: '/favicon.ico' },

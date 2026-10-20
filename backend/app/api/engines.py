@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, or_
 
 from app.database.database import get_db
 from app.database.models import Job, Source, Task, TaskEvent, TaskStatus, TaskEventType
@@ -13,13 +13,27 @@ router = APIRouter(prefix="/engines", tags=["engines"])
 
 
 @router.get("/metrics")
-async def get_engine_metrics(db: AsyncSession = Depends(get_db)):
+async def get_engine_metrics(
+    page: int = 1,
+    limit: int = 24,
+    search: str | None = None,
+    ats_type: str | None = None,
+    is_active: bool | None = None,
+    db: AsyncSession = Depends(get_db)
+):
     jobs_count = int((await db.scalar(select(func.count(Job.id)))) or 0)
     sources_count = int((await db.scalar(select(func.count(Source.id)))) or 0)
     tasks_count = int((await db.scalar(select(func.count(Task.id)))) or 0)
 
     active_sources = int((await db.scalar(select(func.count(Source.id)).where(Source.is_active.is_(True)))) or 0)
     inactive_sources = max(sources_count - active_sources, 0)
+
+    # ATS counts distribution
+    ats_rows = (await db.execute(select(Source.ats_type, func.count(Source.id)).group_by(Source.ats_type))).all()
+    ats_counts: dict[str, int] = {}
+    for row in ats_rows:
+        key = (row[0] or "custom").lower()
+        ats_counts[key] = ats_counts.get(key, 0) + row[1]
 
     discovery_running = int(
         (
@@ -44,12 +58,13 @@ async def get_engine_metrics(db: AsyncSession = Depends(get_db)):
         or 0
     )
 
-    # Pull latest discovery task per target_id for runtime visibility where available.
+    # Pull latest discovery tasks for runtime visibility (capped at 100 recent for performance)
     task_rows = (
         await db.execute(
             select(Task)
             .where(Task.worker_type == "discovery_task")
             .order_by(Task.created_at.desc())
+            .limit(100)
         )
     ).scalars().all()
 
@@ -59,7 +74,40 @@ async def get_engine_metrics(db: AsyncSession = Depends(get_db)):
         if isinstance(target_id, str) and target_id not in latest_task_by_target:
             latest_task_by_target[target_id] = task
 
-    source_rows = (await db.execute(select(Source).order_by(Source.domain.asc()))).scalars().all()
+    # Build filtered query for sources
+    stmt = select(Source)
+    count_stmt = select(func.count(Source.id))
+
+    if search:
+        s_pat = f"%{search.strip()}%"
+        cond = or_(Source.domain.ilike(s_pat), Source.start_url.ilike(s_pat))
+        stmt = stmt.where(cond)
+        count_stmt = count_stmt.where(cond)
+
+    if ats_type and ats_type.lower() != "all":
+        if ats_type.lower() in ["custom", "direct"]:
+            cond = or_(Source.ats_type.is_(None), Source.ats_type == "", Source.ats_type == "custom")
+        else:
+            cond = Source.ats_type.ilike(f"%{ats_type.strip()}%")
+        stmt = stmt.where(cond)
+        count_stmt = count_stmt.where(cond)
+
+    if is_active is not None:
+        stmt = stmt.where(Source.is_active.is_(is_active))
+        count_stmt = count_stmt.where(Source.is_active.is_(is_active))
+
+    filtered_total = int((await db.scalar(count_stmt)) or 0)
+    pages = max((filtered_total + limit - 1) // limit, 1)
+
+    offset = (page - 1) * limit
+    source_rows = (
+        await db.execute(
+            stmt
+            .order_by(Source.last_run_at.desc().nullslast(), Source.domain.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+    ).scalars().all()
 
     engines: list[dict[str, Any]] = []
     for source in source_rows:
@@ -82,7 +130,7 @@ async def get_engine_metrics(db: AsyncSession = Depends(get_db)):
                 last_task = latest_task_by_target[key]
                 break
 
-        runtime_status = "unknown"
+        runtime_status = "idle"
         runtime_error = None
         runtime_updated_at = None
         runtime_task_id = None
@@ -92,6 +140,11 @@ async def get_engine_metrics(db: AsyncSession = Depends(get_db)):
             runtime_error = last_task.error
             runtime_updated_at = last_task.finished_at or last_task.started_at or last_task.created_at
             runtime_task_id = last_task.id
+        elif source.consecutive_failures and source.consecutive_failures > 0:
+            runtime_status = "error"
+            runtime_error = source.last_error
+        elif source.last_run_at:
+            runtime_status = "completed"
 
         engines.append(
             {
@@ -134,6 +187,11 @@ async def get_engine_metrics(db: AsyncSession = Depends(get_db)):
             "last_task_status": last_discovery_task.status.value if last_discovery_task else None,
             "last_task_error": last_discovery_task.error if last_discovery_task else None,
         },
+        "ats_counts": ats_counts,
+        "total": filtered_total,
+        "page": page,
+        "limit": limit,
+        "pages": pages,
         "engines": engines,
     }
 

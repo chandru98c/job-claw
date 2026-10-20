@@ -16,16 +16,19 @@ export default function AgentPage() {
   if (!mounted) return null;
 
   return (
-    <div className="flex flex-col h-full max-w-6xl mx-auto w-full px-6 py-8 overflow-y-auto">
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
+    <div className="flex flex-col max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 relative">
+      {/* Ambient Top Glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[850px] h-[300px] bg-gradient-to-b from-[#c8f542]/[0.07] via-[#c8f542]/[0.02] to-transparent blur-3xl pointer-events-none -z-10" />
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight text-white flex items-center gap-3 mb-2">
-            <div className="p-2 bg-orange-500/10 rounded-[24px]">
-              <Bot className="w-8 h-8 text-orange-400" />
-            </div>
-            Auto-Apply Agent
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
+            <Bot className="w-7 h-7 text-[#c8f542] shrink-0" />
+            Auto-Apply Workflow
           </h1>
-          <p className="text-muted-foreground text-lg">Autonomous Playwright form-filler and application tracking system.</p>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+            Application preparation, review, and submission pipeline.
+          </p>
         </div>
         
         <div className="flex items-center gap-3 bg-card/50 p-1.5 rounded-full border border-border opacity-50 cursor-not-allowed">
@@ -116,47 +119,6 @@ export default function AgentPage() {
           </p>
         </div>
       </div>
-    </div>
-  );
-}
-
-function AppCard({ app, active = false }: { app: any, active?: boolean }) {
-  return (
-    <div className={`bg-card border rounded-[24px] p-4 transition-all cursor-pointer group ${active ? 'border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.15)]' : 'border-border hover:border-white/20'}`}>
-      <div className="flex items-start gap-3">
-        <div className={`w-10 h-10 rounded-[24px] flex items-center justify-center text-lg font-bold flex-shrink-0 ${active ? 'bg-orange-500 text-white' : 'bg-zinc-800 text-muted-foreground'}`}>
-          {app.logo}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h4 className="font-medium text-zinc-100 truncate">{app.role}</h4>
-          <div className="text-sm text-muted-foreground truncate mb-2">{app.company}</div>
-          
-          <div className="flex items-center justify-between text-xs">
-            <span className={
-              app.status === 'in_progress' ? 'text-orange-400 font-medium' :
-              app.status === 'submitted' ? 'text-primary' :
-              app.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'
-            }>
-              {app.time}
-            </span>
-            <ChevronRight className="w-4 h-4 text-zinc-600 group-hover:text-muted-foreground transition-colors" />
-          </div>
-        </div>
-      </div>
-      
-      {active && (
-        <div className="mt-4 pt-3 border-t border-border">
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-muted-foreground">Filling Experience...</span>
-            <span className="text-orange-400">65%</span>
-          </div>
-          <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div className="h-full bg-orange-500 w-[65%] rounded-full relative">
-              <div className="absolute inset-0 bg-white/20 animate-pulse" />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

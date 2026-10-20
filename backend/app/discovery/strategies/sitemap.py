@@ -16,7 +16,11 @@ from __future__ import annotations
 import time
 import logging
 import urllib.parse
-import xml.etree.ElementTree as ET
+try:
+    import defusedxml.ElementTree as ET
+except ImportError:
+    import xml.etree.ElementTree as ET
+from xml.etree.ElementTree import ParseError as XMLParseError
 from typing import Optional
 
 from app.discovery.interfaces import DiscoveryStrategy, StrategyCategory
@@ -26,6 +30,7 @@ from app.schemas.discovery import (
     StrategyExecutionResult,
     DiscoveryError,
     DiscoveryErrorType,
+    SourceConfig,
 )
 from app.core.http import SafeHTTPClient
 
@@ -82,7 +87,7 @@ def parse_sitemap_xml(content: bytes) -> tuple[list[str], list[str]]:
 
     try:
         root = ET.fromstring(content)
-    except ET.ParseError:
+    except (XMLParseError, Exception):
         logger.warning("Failed to parse sitemap XML")
         return [], []
 

@@ -84,7 +84,16 @@ class CareerPageStrategy(DiscoveryStrategy):
         """
         try:
             parsed = urllib.parse.urlparse(url)
-            origin = f"{parsed.scheme}://{parsed.netloc}"
+            netloc = (parsed.netloc or "").lower()
+            ats_hosts = ("lever.co", "greenhouse.io", "myworkdayjobs.com", "ashbyhq.com", "workable.com", "smartrecruiters.com", "recruitee.com", "breezy.hr", "personio.de", "darwinbox.in", "keka.com")
+            if any(h in netloc for h in ats_hosts):
+                # Don't probe generic career paths against multi-tenant ATS domains
+                if source and source.domain and not any(h in source.domain.lower() for h in ats_hosts):
+                    origin = f"https://{source.domain.strip('/')}"
+                else:
+                    return []
+            else:
+                origin = f"{parsed.scheme}://{parsed.netloc}"
         except Exception:
             return []
 

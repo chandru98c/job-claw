@@ -28,7 +28,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       // Fetch profile and worker mode from DB
       const fetchInitialState = async () => {
         try {
-          const baseUrl = "http://127.0.0.1:8000";
+          const baseUrl = api.baseUrl;
           
           try {
             const data: any = await api.get("/profiles/me");
@@ -67,7 +67,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setApiMode(newMode);
     
     try {
-      const baseUrl = "http://127.0.0.1:8000";
+      const baseUrl = api.baseUrl;
       await fetch(`${baseUrl}/system/worker-mode`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

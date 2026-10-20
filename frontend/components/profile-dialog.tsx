@@ -61,7 +61,11 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
     name: "", email: "", phone: "", location: "", tagline: "", about: "",
     skills: [] as string[], interested_fields: [] as string[],
     preferred_locations: [] as string[], preferred_job_types: [] as string[],
-    resume_path: ""
+    resume_path: "",
+    education: "",
+    experience: "Fresher (0-1 Yrs)",
+    experience_level: "fresher",
+    experience_years: 0.0
   });
   
   const [loading, setLoading] = useState(false);
@@ -87,7 +91,11 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
             interested_fields: data.interested_fields || [],
             preferred_locations: data.preferred_locations || [],
             preferred_job_types: data.preferred_job_types || [],
-            resume_path: data.resume_path || ""
+            resume_path: data.resume_path || "",
+            education: data.education || "",
+            experience: data.experience || "Fresher (0-1 Yrs)",
+            experience_level: data.experience_level || "fresher",
+            experience_years: data.experience_years !== undefined ? data.experience_years : 0.0
           });
         })
         .catch(err => setError("Failed to load profile: " + err.message));
@@ -189,10 +197,53 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
               <label className="text-sm text-muted-foreground">Tagline / Title</label>
               <Input value={formData.tagline} onChange={(e) => handleChange("tagline", e.target.value)} className="bg-card border-border" placeholder="e.g. Senior Software Engineer" />
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm text-muted-foreground">Education / Degree</label>
+                <Input 
+                  value={formData.education} 
+                  onChange={(e) => handleChange("education", e.target.value)} 
+                  className="bg-card border-border" 
+                  placeholder="e.g. B.Tech, Master's, Computer Science" 
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-sm text-muted-foreground">Experience Level</label>
+                <select
+                  value={formData.experience_level}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    let expText = "Fresher (0-1 Yrs)";
+                    let expYears = 0.0;
+                    if (val === "junior") { expText = "Junior (1-3 Yrs)"; expYears = 2.0; }
+                    else if (val === "mid") { expText = "Mid-Level (3-5 Yrs)"; expYears = 4.0; }
+                    else if (val === "senior") { expText = "Senior (5+ Yrs)"; expYears = 6.0; }
+                    else if (val === "lead") { expText = "Lead / Principal (8+ Yrs)"; expYears = 9.0; }
+                    
+                    setFormData(prev => ({
+                      ...prev,
+                      experience_level: val,
+                      experience: expText,
+                      experience_years: expYears
+                    }));
+                    setSuccess(false);
+                  }}
+                  className="flex h-10 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#c8f542]"
+                >
+                  <option value="fresher" className="bg-[#121216] text-white">Fresher (0-1 Yrs)</option>
+                  <option value="junior" className="bg-[#121216] text-white">Junior (1-3 Yrs)</option>
+                  <option value="mid" className="bg-[#121216] text-white">Mid-Level (3-5 Yrs)</option>
+                  <option value="senior" className="bg-[#121216] text-white">Senior (5+ Yrs)</option>
+                  <option value="lead" className="bg-[#121216] text-white">Lead / Principal (8+ Yrs)</option>
+                </select>
+              </div>
+            </div>
             
             <div className="flex flex-col gap-2">
               <label className="text-sm text-muted-foreground">About (Bio)</label>
-              <Textarea value={formData.about} onChange={(e) => handleChange("about", e.target.value)} className="bg-card border-border min-h-[120px]" />
+              <Textarea value={formData.about} onChange={(e) => handleChange("about", e.target.value)} className="bg-card border-border min-h-[100px]" />
             </div>
             
             <div className="flex flex-col gap-2 pt-2">

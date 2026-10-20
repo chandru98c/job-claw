@@ -101,11 +101,22 @@ class LLMStrategy(DiscoveryStrategy):
             result.requests_attempted += 1
             
             html = response_bytes.decode("utf-8", errors="replace")
-            # Strip simple tags to save tokens
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, "html.parser")
+            
+            # Remove scripts, styles, forms, headers, footers
+            for tag in soup(["script", "style", "noscript", "svg", "nav", "footer"]):
+                tag.decompose()
+
+            # Convert anchors to markdown links [text](href) so LLM knows the target url
+            for a in soup.find_all("a", href=True):
+                href = a["href"].strip()
+                link_text = a.get_text(" ", strip=True)
+                if href and not href.startswith("#") and not href.startswith("javascript:") and link_text:
+                    a.replace_with(f" [{link_text}]({href}) ")
+
+            text = soup.get_text(" ", strip=True)
             import re
-            text = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.IGNORECASE|re.DOTALL)
-            text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.IGNORECASE|re.DOTALL)
-            text = re.sub(r'<[^>]+>', ' ', text)
             text = re.sub(r'\s+', ' ', text).strip()
             
             # Truncate to avoid massive token usage
@@ -115,21 +126,49 @@ class LLMStrategy(DiscoveryStrategy):
             
             for job in jobs_data:
                 try:
+                    job_title = (job.get("title") or "").strip()[:256]
+                    job_comp = (job.get("company") or "Unknown").strip()[:256]
+                    job_apply = (job.get("apply_url") or "").strip()
+
+                    # Needs title and company to be valid RawJob
+                    if not job_title or not job_comp:
+                        continue
+
+                    # STRICT RULE: A genuine job MUST have a direct application link.
+                    # Category headlines (e.g. 'contract roles', 'cxo roles', 'sales jobs')
+                    # without application links are rejected.
+                    if not job_apply:
+                        continue
+
+                    resolved_apply = urllib.parse.urljoin(url, job_apply)
+                    parsed_apply = urllib.parse.urlparse(resolved_apply)
+                    apply_path = parsed_apply.path.rstrip("/").lower()
+
+                    # Reject if it only resolves to the generic root career/job page or category listing
+                    if apply_path in (
+                        "", "/careers", "/jobs", "/job-opportunities", "/career",
+                        "/en-in/careers", "/en/careers", "/careers/odc-opportunities",
+                        "/careers/opportunities", "/careers/consulting-jobs",
+                        "/odc_opportunities", "/opportunities", "/consulting_jobs"
+                    ) or apply_path.endswith(("/careers", "/jobs", "/odc_opportunities", "/opportunities")):
+                        continue
+
                     raw_job = RawJob(
                         provenance=DiscoveryProvenanceDTO(
                             strategy_id=self.strategy_id,
                             source_type="llm_extracted",
                             source_url=url,
+                            apply_url=resolved_apply,
                         ),
-                        title=job.get("title", "")[:256],
-                        company=job.get("company", "Unknown")[:256],
+                        title=job_title,
+                        company=job_comp,
                         location=job.get("location", None),
                         employment_type=job.get("employment_type", None),
                         remote_status=job.get("remote_status", None),
+                        apply_url=resolved_apply,
+                        url=resolved_apply,
                     )
-                    # Needs title and company to be valid RawJob
-                    if raw_job.title and raw_job.company:
-                        result.raw_jobs.append(raw_job)
+                    result.raw_jobs.append(raw_job)
                 except Exception as e:
                     logger.warning(f"LLM extracted invalid job format: {e}")
             
@@ -137,13 +176,14 @@ class LLMStrategy(DiscoveryStrategy):
             result.jobs_discovered = len(result.raw_jobs)
 
         except Exception as e:
+            logger.warning(f"LLM fallback extraction unavailable or failed: {e}")
             result.success = False
             result.errors.append(
                 DiscoveryError(
                     error_type=DiscoveryErrorType.PARSING_FAILURE,
                     strategy_id=self.strategy_id,
                     candidate_id=candidate.candidate_id,
-                    message=f"LLM Extraction failed: {str(e)}",
+                    message=f"LLM Extraction unavailable: {str(e)[:150]}",
                 )
             )
 
@@ -155,8 +195,9 @@ class LLMStrategy(DiscoveryStrategy):
         from app.core.llm import llm_client
         
         class ExtractedJob(BaseModel):
-            title: str = Field(..., description="The job title")
+            title: str = Field(..., description="The specific job title (e.g. 'Software Engineer', 'Data Analyst')")
             company: str = Field(..., description="The hiring company name")
+            apply_url: str | None = Field(None, description="The direct URL or link to view/apply for this specific job, extracted from markdown links [text](href)")
             location: str | None = Field(None, description="The job location")
             employment_type: str | None = Field(None, description="Employment type (e.g. Full-time, Contract)")
             remote_status: str | None = Field(None, description="Remote status (e.g. Remote, Hybrid, On-site)")
@@ -165,9 +206,13 @@ class LLMStrategy(DiscoveryStrategy):
             jobs: list[ExtractedJob] = Field(..., description="List of extracted jobs")
             
         prompt = f"""
-        Extract job listings from the following text.
-        Return ONLY a JSON object containing a 'jobs' array.
-        Each job must have: 'title', 'company'.
+        Extract only genuine, specific job openings from the following text.
+        DO NOT extract general department headings, category links (e.g. 'contract roles', 'cxo roles', 'sales jobs', 'engineering jobs'), or corporate marketing blurbs.
+        
+        For each job opening, extract:
+        - 'title': The specific job title
+        - 'company': The hiring company name
+        - 'apply_url': The direct link or relative URL to apply or view job details from the [text](url) anchors. Leave null if no specific job link exists.
         Optional fields: 'location', 'employment_type', 'remote_status'.
         
         TEXT:

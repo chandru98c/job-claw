@@ -119,9 +119,12 @@ class Job(Base):
     salary_max = Column(Float, nullable=True)
     salary_currency = Column(String, nullable=True)
     
-    canonical_apply_url = Column(String, nullable=False)
+    canonical_apply_url = Column(String, nullable=True)
     description = Column(Text, nullable=True)
     remote_status = Column(String, nullable=True)
+    education_level = Column(String, nullable=True, index=True)  # e.g. "MCA", "B.Tech", "Any Graduate"
+    role_category = Column(String, nullable=True, index=True)    # e.g. "software_engineer", "frontend", "backend", "fullstack", "data_ai"
+    experience_level = Column(String, nullable=True, index=True) # e.g. "fresher", "junior", "mid", "senior"
     
     # Freshness state machine
     status = Column(Enum(JobStatus), default=JobStatus.UNKNOWN, index=True)
@@ -193,6 +196,10 @@ class Profile(Base):
     preferred_job_types = Column(JSON, default=list)
     
     resume_path = Column(String, nullable=True)
+    education = Column(String, nullable=True)  # e.g. "MCA", "B.Tech CSE"
+    experience = Column(String, nullable=True)  # e.g. "Fresher (0-1 Yrs)", "Junior (1-3 Yrs)"
+    experience_level = Column(String, nullable=True)  # "fresher", "junior", "mid", "senior"
+    experience_years = Column(Float, nullable=True)  # e.g. 0.0, 1.5, 3.0
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

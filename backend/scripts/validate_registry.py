@@ -3,7 +3,7 @@ import sys
 import os
 
 def validate_registry(filepath: str):
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         registry = yaml.safe_load(f)
 
     if not registry:

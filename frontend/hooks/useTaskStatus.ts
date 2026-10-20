@@ -14,6 +14,9 @@ export interface SystemStatus {
   active_engines?: number;
   inactive_engines?: number;
   discovery_queued_tasks?: number;
+  working_engines?: number;
+  worker_mode?: string;
+  worker_queue_depth?: number | null;
 }
 
 const FALLBACK_STATUS: SystemStatus = {

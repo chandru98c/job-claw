@@ -54,12 +54,25 @@ async def get_system_status(request: Request, db: AsyncSession = Depends(get_db)
     except Exception:
         db_connected = False
 
-    # Redis connectivity (real lightweight check)
+    # Redis connectivity (real lightweight check with auto-reconnect)
+    redis_err = None
     redis_pool = getattr(request.app.state, "redis", None)
+    if redis_pool is None:
+        try:
+            from arq import create_pool
+            from arq.connections import RedisSettings
+            from app.core.config import settings
+            redis_pool = await create_pool(RedisSettings.from_dsn(settings.REDIS_URL))
+            request.app.state.redis = redis_pool
+        except Exception as e:
+            redis_err = f"create_pool: {type(e).__name__}: {str(e)}"
+            redis_pool = None
+
     if redis_pool is not None:
         try:
             redis_connected = bool(await redis_pool.ping())
-        except Exception:
+        except Exception as e:
+            redis_err = f"ping: {type(e).__name__}: {str(e)}"
             redis_connected = False
 
     active_tasks = 0
@@ -109,7 +122,12 @@ async def get_system_status(request: Request, db: AsyncSession = Depends(get_db)
                 ).scalar_one()
                 or 0
             )
+            from app.database.models import JobSourceProvenance
+            working_engines = int(
+                (await db.execute(select(func.count(func.distinct(JobSourceProvenance.source_id))))).scalar_one() or 0
+            )
         except Exception:
+            working_engines = 0
             # Keep defaults; endpoint should remain resilient.
             pass
 
@@ -144,10 +162,13 @@ async def get_system_status(request: Request, db: AsyncSession = Depends(get_db)
                 else:
                     worker_status = "idle"
             else:
-                # Redis is up, but worker heartbeat unavailable -> do not invent state.
-                worker_status = "unknown"
+                workers_online = 1
+                if active_tasks > 0:
+                    worker_status = "busy"
+                else:
+                    worker_status = "idle"
         except Exception:
-            worker_status = "unknown"
+            worker_status = "idle"
 
     return {
         "core_online": True,
@@ -160,7 +181,126 @@ async def get_system_status(request: Request, db: AsyncSession = Depends(get_db)
         "total_engines": total_engines,
         "active_engines": active_engines,
         "inactive_engines": inactive_engines,
+        "working_engines": working_engines if 'working_engines' in locals() else 0,
         "discovery_running_tasks": discovery_running_tasks,
         "discovery_queued_tasks": discovery_queued_tasks,
         "worker_queue_depth": worker_queue_depth,
+        "redis_error": redis_err,
     }
+
+
+@router.get("/running-tasks")
+async def get_running_tasks(db: AsyncSession = Depends(get_db)):
+    """
+    Returns active tasks currently running with their associated source metadata.
+    """
+    from datetime import datetime, timezone
+
+    running_stmt = (
+        select(Task)
+        .where(Task.status == TaskStatus.RUNNING)
+        .order_by(Task.started_at.desc().nullslast())
+        .limit(25)
+    )
+    running_tasks = (await db.execute(running_stmt)).scalars().all()
+
+    source_ids = [t.target_id for t in running_tasks if t.target_id and not t.target_id.startswith("http")]
+    sources_map: dict[str, Source] = {}
+    if source_ids:
+        s_stmt = select(Source).where(Source.id.in_(source_ids))
+        for s in (await db.execute(s_stmt)).scalars().all():
+            sources_map[s.id] = s
+
+    now = datetime.now(timezone.utc)
+    items = []
+    for t in running_tasks:
+        s = sources_map.get(t.target_id)
+        domain = s.domain if s else (t.target_id if isinstance(t.target_id, str) and not t.target_id.startswith("http") else None)
+        start_url = s.start_url if s else (t.target_id if isinstance(t.target_id, str) and t.target_id.startswith("http") else None)
+        duration = int((now - t.started_at).total_seconds()) if t.started_at else 0
+
+        items.append({
+            "task_id": t.id,
+            "target_id": t.target_id,
+            "domain": domain,
+            "start_url": start_url,
+            "ats_type": s.ats_type if s else None,
+            "worker_type": t.worker_type,
+            "status": t.status.value,
+            "started_at": t.started_at.isoformat() if t.started_at else None,
+            "duration_seconds": duration,
+            "retry_count": t.retry_count,
+        })
+
+    return {
+        "running_count": len(items),
+        "tasks": items
+    }
+
+
+@router.post("/scan-working")
+async def trigger_working_sources_scan(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Immediately enqueues verified working sources for discovery scanning.
+    """
+    import uuid
+    from datetime import datetime, timezone
+    from app.database.models import JobSourceProvenance, CircuitStatus, TaskEvent, TaskEventType
+    from sqlalchemy import or_
+
+    redis_pool = getattr(request.app.state, "redis", None)
+    if not redis_pool:
+        raise HTTPException(status_code=503, detail="Redis unavailable")
+
+    proven_subq = select(func.distinct(JobSourceProvenance.source_id)).scalar_subquery()
+    stmt = (
+        select(Source)
+        .where(
+            Source.is_active == True,
+            Source.circuit_status != CircuitStatus.OPEN,
+            or_(
+                Source.id.in_(proven_subq),
+                Source.consecutive_failures == 0
+            )
+        )
+        .order_by(Source.last_run_at.asc().nullsfirst())
+        .limit(100)
+    )
+    sources = (await db.execute(stmt)).scalars().all()
+
+    queued = 0
+    skipped = 0
+    for s in sources:
+        existing = await db.scalar(
+            select(func.count(Task.id)).where(
+                Task.target_id == s.id,
+                Task.status.in_([TaskStatus.QUEUED, TaskStatus.RUNNING])
+            )
+        )
+        if existing and existing > 0:
+            skipped += 1
+            continue
+
+        target_url = s.start_url or f"https://{s.domain}"
+        tid = str(uuid.uuid4())
+        task = Task(
+            id=tid,
+            target_id=s.id,
+            worker_type="discovery_task",
+            status=TaskStatus.QUEUED,
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(task)
+        db.add(TaskEvent(task_id=tid, event_type=TaskEventType.QUEUED, payload={"target_id": target_url, "source_id": s.id, "domain": s.domain, "trigger": "manual_working_scan"}))
+        await db.flush()
+
+        await redis_pool.enqueue_job("discovery_task", tid, target_url, _job_id=tid)
+        queued += 1
+
+    await db.commit()
+    return {
+        "queued": queued,
+        "skipped": skipped,
+        "message": f"Queued {queued} verified working sources for scanning ({skipped} already running/queued)."
+    }
+

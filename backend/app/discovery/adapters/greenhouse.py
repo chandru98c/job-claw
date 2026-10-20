@@ -128,13 +128,7 @@ class GreenhouseAdapter(ATSAdapter):
         if source:
             source_id = source.source_id
             
-        if source and source.identifier:
-            board_token = source.identifier
-        elif url:
-            board_token = self.extract_board_identifier(url)
-        else:
-            return []
-            
+        board_token = self.resolve_board_identifier(url, source)
         if not board_token:
             return []
 

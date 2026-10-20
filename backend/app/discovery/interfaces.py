@@ -156,11 +156,47 @@ class ATSAdapter(DiscoveryStrategy):
         """
         ...
         
+    def resolve_board_identifier(self, url: Optional[str] = None, source: Optional[SourceConfig] = None) -> Optional[str]:
+        """
+        Robustly resolves the board identifier from source config or URL signals.
+        """
+        if source and source.identifier:
+            return source.identifier
+        if url:
+            token = self.extract_board_identifier(url)
+            if token:
+                return token
+        if source and source.careers_url:
+            token = self.extract_board_identifier(source.careers_url)
+            if token:
+                return token
+        if source and source.domain:
+            token = self.extract_board_identifier(source.domain)
+            if token:
+                return token
+
+        # If source ats_type matches this ATS adapter, try extracting clean slug from domain or careers_url
+        if source and source.ats_type and source.ats_type.lower() == self.ats_name.lower():
+            for s in [source.careers_url, source.domain, url]:
+                if not s:
+                    continue
+                clean = s.strip().rstrip("/")
+                if "/" in clean:
+                    last = clean.split("/")[-1].split("?")[0].strip()
+                    if last and len(last) >= 2 and last.lower() not in ["jobs", "careers", "career", "apply"]:
+                        return last
+                if "." in clean:
+                    sub = clean.split("//")[-1].split(".")[0].strip()
+                    if sub and len(sub) >= 2 and sub.lower() not in ["jobs", "careers", "career", "apply", "www"]:
+                        return sub
+
+        return None
+
     def can_handle(self, source: SourceConfig) -> bool:
         """
         ATS Adapters generally handle sources where ats_type matches ats_name.
         """
-        return source.ats_type and source.ats_type.lower() == self.ats_name.lower()
+        return bool(source.ats_type and source.ats_type.lower() == self.ats_name.lower())
 
     @abstractmethod
     async def extract_jobs(

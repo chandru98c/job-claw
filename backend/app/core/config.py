@@ -9,13 +9,13 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     
     # Worker Settings
-    WORKER_CONCURRENCY: int = 10
+    WORKER_CONCURRENCY: int = 25
     WORKER_MAX_TRIES: int = 3
     WORKER_JOB_TIMEOUT: int = 300 # 5 minutes
 
     # LLM Integration
     GROQ_API_KEY: str | None = None
-    GROQ_MODEL: str = "llama3-8b-8192"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
     

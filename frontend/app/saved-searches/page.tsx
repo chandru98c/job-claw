@@ -188,14 +188,26 @@ export default function SavedSearchesPage() {
   };
 
   return (
-    <div className="flex flex-col h-full max-w-6xl mx-auto w-full px-6 py-8 overflow-y-auto">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-          <Database className="w-8 h-8 text-primary" />
-          Saved Searches
-        </h1>
+    <div className="flex flex-col max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 relative">
+      {/* Ambient Top Glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[850px] h-[300px] bg-gradient-to-b from-[#c8f542]/[0.07] via-[#c8f542]/[0.02] to-transparent blur-3xl pointer-events-none -z-10" />
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
+            <Database className="w-7 h-7 text-[#c8f542] shrink-0" />
+            Saved Searches
+            <span className="text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-full bg-[#c8f542]/10 border border-[#c8f542]/30 text-[#c8f542] font-mono">
+              {searches.length} active
+            </span>
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+            Automated monitors for your target job searches.
+          </p>
+        </div>
+
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger className={buttonVariants({ variant: "default" }) + " flex items-center gap-2 rounded-full font-semibold"}>
+          <DialogTrigger className="inline-flex items-center gap-1.5 px-4 h-9 text-xs font-bold text-black bg-[#c8f542] hover:bg-[#d8ff4e] rounded-xl shadow-md transition-all hover:scale-105 cursor-pointer">
             <Plus className="w-4 h-4" /> New Search
           </DialogTrigger>
           <DialogContent className="sm:max-w-md bg-background border-border text-white">

@@ -63,6 +63,10 @@ class ProfileUpdate(BaseModel):
     interested_fields: Optional[List[str]] = None
     preferred_locations: Optional[List[str]] = None
     preferred_job_types: Optional[List[str]] = None
+    education: Optional[str] = None
+    experience: Optional[str] = None
+    experience_level: Optional[str] = None
+    experience_years: Optional[float] = None
 
 @router.get("/me")
 async def get_my_profile(profile: Profile = Depends(get_valid_profile)):
@@ -78,7 +82,11 @@ async def get_my_profile(profile: Profile = Depends(get_valid_profile)):
         "interested_fields": profile.interested_fields or [],
         "preferred_locations": profile.preferred_locations or [],
         "preferred_job_types": profile.preferred_job_types or [],
-        "resume_path": profile.resume_path
+        "resume_path": profile.resume_path,
+        "education": profile.education,
+        "experience": profile.experience or "Fresher (0-1 Yrs)",
+        "experience_level": profile.experience_level or "fresher",
+        "experience_years": profile.experience_years if profile.experience_years is not None else 0.0,
     }
 
 @router.put("/me")
@@ -97,6 +105,10 @@ async def update_my_profile(
     if data.interested_fields is not None: profile.interested_fields = data.interested_fields
     if data.preferred_locations is not None: profile.preferred_locations = data.preferred_locations
     if data.preferred_job_types is not None: profile.preferred_job_types = data.preferred_job_types
+    if data.education is not None: profile.education = data.education
+    if data.experience is not None: profile.experience = data.experience
+    if data.experience_level is not None: profile.experience_level = data.experience_level
+    if data.experience_years is not None: profile.experience_years = data.experience_years
     
     await db.commit()
     await db.refresh(profile)
@@ -113,7 +125,11 @@ async def update_my_profile(
         "interested_fields": profile.interested_fields or [],
         "preferred_locations": profile.preferred_locations or [],
         "preferred_job_types": profile.preferred_job_types or [],
-        "resume_path": profile.resume_path
+        "resume_path": profile.resume_path,
+        "education": profile.education,
+        "experience": profile.experience,
+        "experience_level": profile.experience_level,
+        "experience_years": profile.experience_years,
     }
 
 @router.post("/me/resume")

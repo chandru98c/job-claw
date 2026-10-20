@@ -3,8 +3,10 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Compass, Database, Activity, Bot, ChevronDown, ChevronUp } from "lucide-react";
+import { Compass, Database, Activity, Bot, ChevronRight } from "lucide-react";
 import { useTaskStatus } from "@/hooks/useTaskStatus";
+
+import { SystemStatusModal } from "@/components/system/system-status-modal";
 
 function workerLabel(status: string, activeTasks: number) {
   if (status === "busy") return `Busy (${activeTasks})`;
@@ -14,16 +16,16 @@ function workerLabel(status: string, activeTasks: number) {
 }
 
 function statusDotClass(status: string) {
-  if (status === "busy") return "bg-amber-500 animate-pulse";
-  if (status === "idle") return "bg-primary";
-  if (status === "offline") return "bg-destructive";
+  if (status === "busy") return "bg-amber-400 animate-pulse";
+  if (status === "idle") return "bg-emerald-400";
+  if (status === "offline") return "bg-rose-500";
   return "bg-zinc-500";
 }
 
 export function Sidebar() {
   const pathname = usePathname();
   const status = useTaskStatus();
-  const [isStatusExpanded, setIsStatusExpanded] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const links = [
     { href: "/", label: "Discover", icon: Compass },
@@ -58,75 +60,34 @@ export function Sidebar() {
         })}
       </div>
 
-      <div className="p-3 border-t border-white/[0.05] shrink-0">
-        <div className="bg-card/30 border border-border rounded-xl overflow-hidden">
-          <button
-            onClick={() => setIsStatusExpanded((v) => !v)}
-            className="w-full p-2.5 flex items-start justify-between gap-3 hover:bg-card/50 transition-colors text-left"
-            aria-expanded={isStatusExpanded}
-          >
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">System Status</div>
-              <div className="text-sm text-foreground leading-5 truncate">Core: {status.core_online ? "Online" : "Offline"}</div>
-              <div className="text-sm text-muted-foreground leading-5 truncate">Worker: {workerLabel(status.worker_status, status.active_tasks)}</div>
-            </div>
-            {isStatusExpanded ? (
-              <ChevronUp className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
-            )}
-          </button>
+      <div className="p-3 pb-12 border-t border-white/[0.06] shrink-0">
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="w-full h-9 px-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] hover:border-[#c8f542]/30 transition-all flex items-center justify-between group cursor-pointer shadow-sm"
+          title="Open System Diagnostics & Running Tasks"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(status.worker_status)}`} />
+            <span className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors truncate">
+              System
+            </span>
+          </div>
 
-          {isStatusExpanded && (
-            <div className="px-3 pb-3 pt-2 border-t border-border space-y-3 bg-black/20">
-              <StatusRow label="Core" value={status.core_online ? "Online" : "Offline"} dotClass={status.core_online ? "bg-primary" : "bg-destructive"} />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/[0.06] text-zinc-400 font-mono font-medium group-hover:text-[#c8f542] transition-colors">
+              {status.active_tasks > 0 
+                ? `${status.active_tasks} busy` 
+                : status.core_online ? "Online" : "Offline"}
+            </span>
+            <ChevronRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-[#c8f542] group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </button>
 
-              <div>
-                <StatusRow
-                  label="Worker"
-                  value={workerLabel(status.worker_status, status.active_tasks)}
-                  dotClass={statusDotClass(status.worker_status)}
-                />
-                <div className="text-xs text-muted-foreground mt-1 pl-3">Active tasks: {status.active_tasks ?? 0}</div>
-                <div className="text-xs text-muted-foreground mt-0.5 pl-3">Workers online: {status.workers_online ?? 0}</div>
-              </div>
-
-              <StatusRow
-                label="Redis"
-                value={status.redis_connected ? "Connected" : "Disconnected"}
-                dotClass={status.redis_connected ? "bg-primary" : "bg-destructive"}
-              />
-
-              <StatusRow
-                label="Database"
-                value={status.db_connected ? "Connected" : "Disconnected"}
-                dotClass={status.db_connected ? "bg-primary" : "bg-destructive"}
-              />
-
-              <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">Discovery</div>
-                <div className="text-sm text-muted-foreground break-words">
-                  {status.total_engines ?? 0} engines ({status.active_engines ?? 0} active / {status.inactive_engines ?? 0} inactive)
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Running: {status.discovery_running_tasks ?? 0} · Queued: {status.discovery_queued_tasks ?? 0}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusRow({ label, value, dotClass }: { label: string; value: string; dotClass: string }) {
-  return (
-    <div>
-      <div className="text-xs font-medium text-muted-foreground mb-1">{label}</div>
-      <div className="text-sm text-foreground flex items-center gap-2 min-w-0">
-        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
-        <span className="truncate">{value}</span>
+        <SystemStatusModal 
+          open={isModalOpen} 
+          onOpenChange={setIsModalOpen} 
+          status={status} 
+        />
       </div>
     </div>
   );

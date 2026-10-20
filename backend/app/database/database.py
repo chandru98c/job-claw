@@ -27,8 +27,22 @@ if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING"):
     engine = create_async_engine(async_db_url, echo=False, poolclass=NullPool)
     sync_engine = create_engine(sync_db_url, echo=False, poolclass=NullPool)
 else:
-    engine = create_async_engine(async_db_url, echo=False)
-    sync_engine = create_engine(sync_db_url, echo=False)
+    engine = create_async_engine(
+        async_db_url,
+        echo=False,
+        pool_size=20,
+        max_overflow=30,
+        pool_timeout=60.0,
+        pool_pre_ping=True,
+    )
+    sync_engine = create_engine(
+        sync_db_url,
+        echo=False,
+        pool_size=20,
+        max_overflow=30,
+        pool_timeout=60.0,
+        pool_pre_ping=True,
+    )
 
 AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
